@@ -1,20 +1,17 @@
-// src/firebase.js
 import { initializeApp } from "firebase/app";
-// 🌟 1. 加上這一行，引入 Firestore 資料庫功能
-import { getFirestore } from "firebase/firestore"; 
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAyWPYURhMqYRvZrS7BkY3vOaQNczoSp6U",
-  authDomain: "busan-tokyo-travel.firebaseapp.com",
-  projectId: "busan-tokyo-travel",
-  storageBucket: "busan-tokyo-travel.firebasestorage.app",
-  messagingSenderId: "345671132127",
-  appId: "1:345671132127:web:bf31babecddc28b043da6a",
-  measurementId: "G-YFS5Q2Z66C"
+  apiKey: "AIzaSyAnyhe3xQ2bFp1m_oOUrSpeV78NxJyjmYk",
+  authDomain: "travel-pro-b8649.firebaseapp.com",
+  projectId: "travel-pro-b8649",
+  storageBucket: "travel-pro-b8649.firebasestorage.app",
+  messagingSenderId: "878843278733",
+  appId: "1:878843278733:web:d94ee0d2eb3616c00ff9c4",
+  measurementId: "G-3YMN62QVDR"
 };
 
-// 初始化 Firebase App
 const app = initializeApp(firebaseConfig);
-
-// 🌟 2. 核心關鍵：將資料庫服務初始化，並用 export 匯出給 App.js 使用！
-export const db = getFirestore(app); 
+export const auth = getAuth(app);
+export const db = getFirestore(app);
