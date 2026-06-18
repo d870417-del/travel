@@ -598,6 +598,9 @@ const getCategoryStyle = (cat) => {
 function TripDetailScreen({ user, trip, onBack }) {
   const color = trip.color || C.blue;
   const [activeTab, setActiveTab] = useState('itinerary');
+  const [foodItems, setFoodItems] = useState([]);
+  const [foodModal, setFoodModal] = useState({ open: false, data: null });
+  const [foodFilter, setFoodFilter] = useState('全部');
   const [members, setMembers] = useState([]);
   const [itinerary, setItinerary] = useState([]);
   const [tripDates, setTripDates] = useState(['待安排']);
@@ -617,6 +620,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   useEffect(() => {
     loadMembers();
     loadItinerary();
+    loadFood();
   }, [trip.id]);
 
   async function loadMembers() {
@@ -643,6 +647,22 @@ function TripDetailScreen({ user, trip, onBack }) {
       await setDoc(doc(db, "tripData", `${trip.id}_itinerary`), {
         items: JSON.parse(JSON.stringify(items)),
         dates: dates,
+        updatedAt: serverTimestamp(),
+      });
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadFood() {
+    try {
+      const snap = await getDoc(doc(db, "tripData", `${trip.id}_food`));
+      if (snap.exists()) setFoodItems(snap.data().items || []);
+    } catch(e) { console.error(e); }
+  }
+
+  async function saveFood(items) {
+    try {
+      await setDoc(doc(db, "tripData", `${trip.id}_food`), {
+        items: JSON.parse(JSON.stringify(items)),
         updatedAt: serverTimestamp(),
       });
     } catch(e) { console.error(e); }
@@ -731,7 +751,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
         {/* Sub tabs */}
         <div style={{ display: 'flex', gap: 4 }}>
-          {[['itinerary','行程'],['members','成員'],['invite','邀請']].map(([id,label]) => (
+          {[['itinerary','行程'],['food','美食'],['members','成員'],['invite','邀請']].map(([id,label]) => (
             <button key={id} onClick={() => setActiveTab(id)}
               style={{ padding: '8px 16px', border: 'none', borderBottom: activeTab===id ? `2px solid ${color}` : '2px solid transparent', backgroundColor: 'transparent', color: activeTab===id ? color : C.textMuted, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               {label}
@@ -858,6 +878,128 @@ function TripDetailScreen({ user, trip, onBack }) {
             {/* 新增按鈕 */}
             <button onClick={() => { setModal({ open: true, data: { category: '景點', date: selectedDate } }); setTempPhotos([]); }}
               style={{ position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 18, border: 'none', background: `linear-gradient(135deg,${color},${C.purple})`, color: '#fff', fontSize: 28, cursor: 'pointer', boxShadow: `0 4px 16px ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>＋</button>
+          </div>
+        )}
+
+
+        {/* ── 美食 Tab ── */}
+        {activeTab === 'food' && (
+          <div style={{ padding: 16 }}>
+            {/* 篩選列 */}
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 8 }}>
+              {['全部', '景點附近', '必吃', '咖啡甜點', '居酒屋', '拉麵', '燒肉', '海鮮'].map(f => (
+                <button key={f} onClick={() => setFoodFilter(f)}
+                  style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 10, border: `1.5px solid ${foodFilter===f ? '#D97706' : C.border}`, backgroundColor: foodFilter===f ? '#FEF3E8' : C.surface, color: foodFilter===f ? '#D97706' : C.textMuted, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {/* 美食列表 */}
+            {foodItems.filter(i => foodFilter === '全部' || i.category === foodFilter).length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted, fontSize: 13 }}>尚無美食紀錄，點右下角 ＋ 新增</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {foodItems.filter(i => foodFilter === '全部' || i.category === foodFilter).map(item => (
+                  <div key={item.id} style={{ ...gs.card, padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+                        {item.category && <span style={{ padding: '3px 8px', borderRadius: 6, backgroundColor: '#FEF3E8', color: '#D97706', border: '1px solid #FDDCB0', fontSize: 11, fontWeight: 700 }}>{item.category}</span>}
+                        {item.visited && <span style={{ padding: '3px 8px', borderRadius: 6, backgroundColor: C.greenSoft, color: C.green, fontSize: 11, fontWeight: 700 }}>✓ 已去</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button onClick={() => setFoodModal({ open: true, data: item })}
+                          style={{ padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 8, backgroundColor: C.bg, color: C.textMuted, fontSize: 12, cursor: 'pointer' }}>✏️</button>
+                        <button onClick={() => {
+                          const newItems = foodItems.filter(i => i.id !== item.id);
+                          setFoodItems(newItems); saveFood(newItems);
+                        }} style={{ padding: '5px 8px', border: `1px solid ${C.danger}33`, borderRadius: 8, backgroundColor: '#FDE8E8', color: C.danger, fontSize: 12, cursor: 'pointer' }}>🗑</button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>{item.name}</div>
+                    {item.location && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>📍 {item.location}</div>}
+                    {item.price && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>💴 {item.price}</div>}
+                    {item.note && <div style={{ fontSize: 12, color: '#5A5247', backgroundColor: '#FEF3E8', borderLeft: '3px solid #D97706', padding: '8px 10px', borderRadius: '0 8px 8px 0', marginBottom: 8, whiteSpace: 'pre-wrap' }}>{item.note}</div>}
+                    {item.photos?.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}>
+                        {item.photos.map((p, i) => (
+                          <img key={i} src={p} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, flexShrink: 0, border: `1px solid ${C.border}` }} alt="food" />
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                      <div style={{ fontSize: 10, color: C.textMuted }}>{item.editedByName || '成員'} 新增</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => {
+                          const newItems = foodItems.map(i => i.id === item.id ? { ...i, visited: !i.visited } : i);
+                          setFoodItems(newItems); saveFood(newItems);
+                        }} style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${item.visited ? C.green : C.border}`, backgroundColor: item.visited ? C.greenSoft : C.bg, color: item.visited ? C.green : C.textMuted, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                          {item.visited ? '✓ 已去' : '標記已去'}
+                        </button>
+                        {item.mapUrl && (
+                          <button onClick={() => window.open(item.mapUrl, '_blank')}
+                            style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #FDDCB0', backgroundColor: '#FEF3E8', color: '#D97706', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>🗺 導航</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 新增美食按鈕 */}
+            <button onClick={() => setFoodModal({ open: true, data: { category: '必吃', visited: false } })}
+              style={{ position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 18, border: 'none', background: 'linear-gradient(135deg,#D97706,#F59E0B)', color: '#fff', fontSize: 28, cursor: 'pointer', boxShadow: '0 4px 16px rgba(217,119,6,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>＋</button>
+
+            {/* 美食新增/編輯 Modal */}
+            {foodModal.open && (
+              <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(45,42,36,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
+                <div style={{ ...gs.card, width: '100%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, maxHeight: '88vh', overflowY: 'auto', boxSizing: 'border-box', borderBottom: 'none' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{foodModal.data?.id ? '編輯美食' : '新增美食'}</div>
+                    <button onClick={() => setFoodModal({ open: false, data: null })} style={{ background: 'none', border: 'none', color: C.textMuted, fontSize: 24, cursor: 'pointer' }}>×</button>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={gs.label}>店家名稱 *</label>
+                    <input style={gs.input} placeholder="例：一蘭拉麵、築地玉壽司" value={foodModal.data?.name||''} onChange={e => setFoodModal(p => ({ ...p, data: { ...p.data, name: e.target.value } }))} />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={gs.label}>類別</label>
+                    <select value={foodModal.data?.category||'必吃'} onChange={e => setFoodModal(p => ({ ...p, data: { ...p.data, category: e.target.value } }))} style={{ ...gs.input, cursor: 'pointer' }}>
+                      {['必吃','咖啡甜點','居酒屋','拉麵','燒肉','海鮮','景點附近','其他'].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={gs.label}>📍 地點（選填）</label>
+                    <input style={gs.input} placeholder="例：新宿、涉谷" value={foodModal.data?.location||''} onChange={e => setFoodModal(p => ({ ...p, data: { ...p.data, location: e.target.value } }))} />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={gs.label}>💴 價位（選填）</label>
+                    <input style={gs.input} placeholder="例：¥1500、$$" value={foodModal.data?.price||''} onChange={e => setFoodModal(p => ({ ...p, data: { ...p.data, price: e.target.value } }))} />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={gs.label}>地圖連結（選填）</label>
+                    <input style={gs.input} placeholder="貼上 Google Maps 連結" value={foodModal.data?.mapUrl||''} onChange={e => setFoodModal(p => ({ ...p, data: { ...p.data, mapUrl: e.target.value } }))} />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={gs.label}>備註（選填）</label>
+                    <textarea value={foodModal.data?.note||''} onChange={e => setFoodModal(p => ({ ...p, data: { ...p.data, note: e.target.value } }))} placeholder="必點菜色、注意事項..." rows={3} style={{ ...gs.input, resize: 'none', fontFamily: 'inherit' }} />
+                  </div>
+                  <button onClick={() => {
+                    if (!foodModal.data?.name?.trim()) return;
+                    const finalData = { ...foodModal.data, editedByName: user.displayName || user.email, editedById: user.uid, createdAt: foodModal.data.createdAt || Date.now() };
+                    const newItems = foodModal.data.id
+                      ? foodItems.map(i => i.id === foodModal.data.id ? finalData : i)
+                      : [...foodItems, { ...finalData, id: Date.now() }];
+                    setFoodItems(newItems);
+                    saveFood(newItems);
+                    setFoodModal({ open: false, data: null });
+                  }} style={{ width: '100%', border: 'none', borderRadius: 13, padding: 14, fontSize: 15, fontWeight: 700, cursor: 'pointer', background: 'linear-gradient(135deg,#D97706,#F59E0B)', color: '#fff' }}>
+                    確認儲存
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
