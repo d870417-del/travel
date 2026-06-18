@@ -720,7 +720,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   return (
     <div style={gs.app}>
       {/* Header */}
-      <div style={{ padding: '52px 20px 0', background: `linear-gradient(160deg,${color}18,${C.purpleSoft})`, borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ padding: '16px 20px 0', backgroundColor: color+'12', borderBottom: `1px solid ${color}33` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <button onClick={onBack} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, width: 36, height: 36, fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.text, flexShrink: 0 }}>←</button>
           <div style={{ width: 44, height: 44, borderRadius: 13, flexShrink: 0, backgroundColor: color+'22', border: `1.5px solid ${color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{trip.emoji || '✈️'}</div>
