@@ -612,6 +612,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [tempPhotos, setTempPhotos] = React.useState([]);
   const [confirmDel, setConfirmDel] = React.useState(null);
   const [datePickerOpen, setDatePickerOpen] = React.useState(false);
+  const [datePickerInput, setDatePickerInput] = React.useState('');
   const [viewerPhotos, setViewerPhotos] = React.useState(null);
   const [viewerIndex, setViewerIndex] = React.useState(0);
   const [activeTab, setActiveTab] = React.useState('itinerary'); // itinerary | members | invite
@@ -722,30 +723,8 @@ function TripDetailScreen({ user, trip, onBack }) {
 
   const color = trip.color || C.blue;
 
-  // ── 日期選擇器 ──
-  const DatePickerModal = () => {
-    const [picked, setPicked] = React.useState('');
-    if (!datePickerOpen) return null;
-    return (
-      <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
-        <div onClick={() => setDatePickerOpen(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(45,42,36,0.5)' }} />
-        <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:320 }}>
-          <div style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>新增日期</div>
-          <input type="date" value={picked} onChange={e => setPicked(e.target.value)}
-            style={{ ...gs.input, marginBottom:16 }} />
-          <div style={{ display:'flex', gap:10 }}>
-            <button onClick={() => setDatePickerOpen(false)} style={{ flex:1, padding:11, border:`1px solid ${C.border}`, borderRadius:10, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:600, cursor:'pointer' }}>取消</button>
-            <button onClick={() => {
-              if (!picked) return;
-              const d = new Date(picked);
-              const mmdd = `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
-              handleSelectDate(mmdd);
-            }} disabled={!picked} style={{ flex:1, padding:11, border:'none', borderRadius:10, background:`linear-gradient(135deg,${color},${C.purple})`, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', opacity: picked ? 1 : 0.5 }}>新增</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  // ── 日期選擇器狀態（移到元件頂層）──
+  // datePickerInput 已在頂層 useState 宣告，這裡不需要重複定義
 
   // ── Tab 標籤 ──
   const tabs = [
@@ -1073,7 +1052,28 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
 
-      <DatePickerModal />
+      {datePickerOpen && (
+        <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+          <div onClick={() => { setDatePickerOpen(false); setDatePickerInput(''); }} style={{ position:'absolute', inset:0, backgroundColor:'rgba(45,42,36,0.5)' }} />
+          <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:320 }}>
+            <div style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>新增日期</div>
+            <input type="date" value={datePickerInput} onChange={e => setDatePickerInput(e.target.value)}
+              style={{ ...gs.input, marginBottom:16 }} />
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => { setDatePickerOpen(false); setDatePickerInput(''); }}
+                style={{ flex:1, padding:11, border:`1px solid ${C.border}`, borderRadius:10, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:600, cursor:'pointer' }}>取消</button>
+              <button onClick={() => {
+                if (!datePickerInput) return;
+                const d = new Date(datePickerInput);
+                const mmdd = `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
+                handleSelectDate(mmdd);
+                setDatePickerInput('');
+              }} disabled={!datePickerInput}
+                style={{ flex:1, padding:11, border:'none', borderRadius:10, background:`linear-gradient(135deg,${color},${C.purple})`, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', opacity: datePickerInput ? 1 : 0.5 }}>新增</button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmDialog isOpen={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => handleDeleteItem(confirmDel)} title="確認刪除" message="確定要刪除這個行程項目嗎？" />
       <PhotoViewerModal isOpen={!!viewerPhotos} onClose={() => setViewerPhotos(null)} photos={viewerPhotos} initialIndex={viewerIndex} />
     </div>
