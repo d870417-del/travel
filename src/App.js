@@ -368,36 +368,44 @@ function TripListScreen({ user, onEnterTrip }) {
               const color = trip.color || TRIP_COLORS[i % TRIP_COLORS.length];
               const fmtDate = (d) => { if (!d) return null; const dt = new Date(d); return `${dt.getMonth()+1}/${dt.getDate()}`; };
               return (
-                <div key={trip.id} style={{ ...gs.card, display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: C.surface }}>
-                  <button onClick={() => onEnterTrip(trip)} style={{ display:"flex", alignItems:"center", gap:14, flex:1, background:"none", border:"none", cursor:"pointer", textAlign:"left", padding:0 }}>
-                    <div style={{ width: 46, height: 46, borderRadius: 13, flexShrink: 0, backgroundColor: color+"22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+                <div key={trip.id} style={{ ...gs.card, padding:"14px 16px", background:C.surface, position:"relative" }}>
+                  {/* 右上角編輯＋刪除 */}
+                  <div style={{ position:"absolute", top:10, right:12, display:"flex", gap:2, zIndex:1 }}>
+                    <button onClick={() => setTripToEdit(trip)}
+                      style={{ background:"none", border:"none", color:C.textMuted, fontSize:13, cursor:"pointer", padding:"2px 4px", opacity:0.5 }}>✏️</button>
+                    <button onClick={() => { const isAdmin = trip.createdBy === user.uid; setTripToDelete({ trip, isAdmin }); }}
+                      style={{ background:"none", border:"none", color:C.textMuted, fontSize:13, cursor:"pointer", padding:"2px 4px", opacity:0.5 }}>×</button>
+                  </div>
+                  {/* 主要內容點擊進入旅程 */}
+                  <button onClick={() => onEnterTrip(trip)} style={{ display:"flex", alignItems:"center", gap:12, width:"100%", background:"none", border:"none", cursor:"pointer", textAlign:"left", padding:0 }}>
+                    <div style={{ width:46, height:46, borderRadius:13, flexShrink:0, backgroundColor:color+"22", border:`1.5px solid ${color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>
                       {trip.emoji || "✈️"}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{trip.name}</div>
-                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:3, paddingRight:48 }}>{trip.name}</div>
+                      <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>
                         {(trip.destinations||[trip.destination]).filter(Boolean).map(d=>`📍 ${d}`).join(' · ')}
-                        {trip.startDate && ` · ${fmtDate(trip.startDate)}${trip.endDate ? ` – ${fmtDate(trip.endDate)}` : ""}`}
-                        {trip.startDate && (() => {
-                          const today = new Date(); today.setHours(0,0,0,0);
-                          const start = new Date(trip.startDate); start.setHours(0,0,0,0);
-                          const end = trip.endDate ? new Date(trip.endDate) : start; end.setHours(0,0,0,0);
-                          const diff = Math.ceil((start - today) / 86400000);
-                          if (diff > 0) return ` · 還有 ${diff} 天 🗓`;
-                          if (diff === 0) return ` · 今天出發！🎉`;
-                          if (today <= end) return ` · 旅遊中 ✈️`;
-                          return ` · 已結束`;
-                        })()}
                       </div>
+                      {trip.startDate && (() => {
+                        const today = new Date(); today.setHours(0,0,0,0);
+                        const start = new Date(trip.startDate); start.setHours(0,0,0,0);
+                        const end = trip.endDate ? new Date(trip.endDate) : start; end.setHours(0,0,0,0);
+                        const diff = Math.ceil((start - today) / 86400000);
+                        let badge, badgeColor, badgeBg;
+                        if (diff > 0) { badge=`還有 ${diff} 天`; badgeColor=color; badgeBg=color+'18'; }
+                        else if (diff === 0) { badge='今天出發！🎉'; badgeColor='#D97706'; badgeBg='#FEF3E8'; }
+                        else if (today <= end) { badge='旅遊中 ✈️'; badgeColor=C.green; badgeBg=C.greenSoft; }
+                        else { badge='已結束'; badgeColor=C.textMuted; badgeBg=C.bg; }
+                        return (
+                          <div style={{ display:"inline-flex", alignItems:"center" }}>
+                            <span style={{ padding:"3px 10px", borderRadius:8, backgroundColor:badgeBg, color:badgeColor, fontSize:11, fontWeight:700 }}>{badge}</span>
+                            {trip.startDate && <span style={{ fontSize:10, color:C.textMuted, marginLeft:6 }}>{fmtDate(trip.startDate)}{trip.endDate?` – ${fmtDate(trip.endDate)}`:''}</span>}
+                          </div>
+                        );
+                      })()}
                     </div>
-                    <div style={{ color: color, fontSize: 18, fontWeight: 700 }}>›</div>
+                    <div style={{ color:color, fontSize:20, fontWeight:700, flexShrink:0 }}>›</div>
                   </button>
-                  <div style={{ display:"flex", gap:4, flexShrink:0 }}>
-                    <button onClick={() => setTripToEdit(trip)}
-                      style={{ background:"none", border:"none", color:C.textMuted, fontSize:15, cursor:"pointer", padding:"4px 6px", opacity:0.6 }}>✏️</button>
-                    <button onClick={() => { const isAdmin = trip.createdBy === user.uid; setTripToDelete({ trip, isAdmin }); }}
-                      style={{ background:"none", border:"none", color:C.textMuted, fontSize:16, cursor:"pointer", padding:"4px 6px", opacity:0.5 }}>×</button>
-                  </div>
                 </div>
               );
             })}
@@ -2031,8 +2039,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                   <div key={memo.id} style={{ ...gs.card, padding:'16px' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
                       <div>
-                        {memo.title && <div style={{ fontSize:15, fontWeight:800, color:C.text, marginBottom:4 }}>{memo.title}</div>}
-                        <div style={{ display:'flex', gap:6 }}>
+                            <div style={{ display:'flex', gap:6 }}>
                           <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:memo.type==='checklist'?C.greenSoft:C.blueSoft, color:memo.type==='checklist'?C.green:C.blue, fontSize:11, fontWeight:700 }}>
                             {memo.type==='checklist'?'✅ 清單':'📝 記事'}
                           </span>
@@ -2078,33 +2085,46 @@ function TripDetailScreen({ user, trip, onBack }) {
       );
     }
 
-    if (moreSection==='members') return (
-      <div style={{ flex:1, overflowY:'auto' }}>
-        <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-          <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
-          <div style={{ fontSize:15, fontWeight:800 }}>成員</div>
-        </div>
-        <div style={{ padding:20 }}>
-          <div style={gs.card}>
-            <div style={{ fontSize:12, fontWeight:700, color:C.textMuted, textTransform:'uppercase', marginBottom:12 }}>成員（{members.length} 人）</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {members.map(m => {
-                const mc=[C.blue,C.green,C.purple,'#E0875A'][(m.displayName||'').charCodeAt(0)%4];
-                return (
-                  <div key={m.uid} style={{ display:'flex', alignItems:'center', gap:12 }}>
-                    <div style={{ width:40, height:40, borderRadius:'50%', backgroundColor:mc+'22', border:`1.5px solid ${mc}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:700, color:mc, flexShrink:0 }}>{(m.displayName||'?')[0].toUpperCase()}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600 }}>{m.displayName}{m.uid===user.uid&&<span style={{ fontSize:11, color:C.textMuted, marginLeft:6 }}>（我）</span>}</div>
-                      <div style={{ fontSize:11, color:m.role==='admin'?C.blue:C.textMuted, fontWeight:600 }}>{m.role==='admin'?'管理員':'成員'}</div>
+    if (moreSection==='members') {
+      const isAdmin = members.find(m=>m.uid===user.uid)?.role==='admin';
+      async function removeMember(m) {
+        try {
+          await deleteDoc(doc(db,"tripMembers",`${trip.id}_${m.uid}`));
+          setMembers(p=>p.filter(x=>x.uid!==m.uid));
+        } catch(e) { console.error(e); }
+      }
+      return (
+        <div style={{ flex:1, overflowY:'auto' }}>
+          <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
+            <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
+            <div style={{ fontSize:15, fontWeight:800 }}>成員（{members.length} 人）</div>
+          </div>
+          <div style={{ padding:20 }}>
+            <div style={gs.card}>
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {members.map(m => {
+                  const mc=[C.blue,C.green,C.purple,'#E0875A'][(m.displayName||'').charCodeAt(0)%4];
+                  const canRemove = isAdmin && m.uid!==user.uid && m.role!=='admin';
+                  return (
+                    <div key={m.uid} style={{ display:'flex', alignItems:'center', gap:12 }}>
+                      <div style={{ width:40, height:40, borderRadius:'50%', backgroundColor:mc+'22', border:`1.5px solid ${mc}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:700, color:mc, flexShrink:0 }}>{(m.displayName||'?')[0].toUpperCase()}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:14, fontWeight:600 }}>{m.displayName}{m.uid===user.uid&&<span style={{ fontSize:11, color:C.textMuted, marginLeft:6 }}>（我）</span>}</div>
+                        <div style={{ fontSize:11, color:m.role==='admin'?C.blue:C.textMuted, fontWeight:600 }}>{m.role==='admin'?'管理員':'成員'}</div>
+                      </div>
+                      {canRemove && (
+                        <button onClick={() => setConfirmDel({title:'移除成員',message:`確定移除「${m.displayName}」？移除後他將無法看到這個旅程。`,fn:()=>removeMember(m)})}
+                          style={{ padding:'5px 10px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:12, cursor:'pointer', fontWeight:700 }}>移除</button>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    );
+      );
+    }
 
     if (moreSection==='invite') return (
       <div style={{ flex:1, overflowY:'auto' }}>
@@ -2959,7 +2979,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       : (fn) => { const n=typeof fn==='function'?fn(personalMemos):fn; setPersonalMemos(n); savePersonalMemos(n); };
 
     const saveMemo = () => {
-      if (!d.title?.trim() && !d.content?.trim() && !memoPhoto && checkItems.filter(i=>i.text).length===0) return;
+      if (!d.content?.trim() && !memoPhoto && checkItems.filter(i=>i.text?.trim()).length===0) return;
       const now = Date.now();
       const fd = { ...d, photo:memoPhoto, editedByName:user.displayName||user.email, editedById:user.uid, createdAtMs:d.createdAtMs||now, updatedAtMs:now };
       setMemoItems(p => d.id ? p.map(m=>m.id===d.id?fd:m) : [{...fd, id:now}, ...p]);
@@ -2983,11 +3003,6 @@ function TripDetailScreen({ user, trip, onBack }) {
                 {label}
               </button>
             ))}
-          </div>
-
-          {/* 標題 */}
-          <div style={{ marginBottom:12 }}>
-            <ImeInput key="memo-title" style={gs.input} placeholder="標題（選填）" value={d.title||''} onChange={v=>setMemoModal(p=>({...p,data:{...p.data,title:v}}))} />
           </div>
 
           {/* 記事模式：文字 + 照片 */}
@@ -3057,10 +3072,16 @@ function TripDetailScreen({ user, trip, onBack }) {
   // ════════════════════════════════════════
   return (
     <div style={{ ...gs.app, maxHeight:'100vh' }}
-      onTouchStart={e => { window.__swipeStartX = e.touches[0].clientX; }}
+      onTouchStart={e => {
+        window.__swipeStartX = e.touches[0].clientX;
+        window.__swipeStartY = e.touches[0].clientY;
+      }}
       onTouchEnd={e => {
-        const dx = e.changedTouches[0].clientX - (window.__swipeStartX||0);
-        if (dx > 80) { // 右滑 80px 以上
+        const startX = window.__swipeStartX || 0;
+        const dx = e.changedTouches[0].clientX - startX;
+        const dy = Math.abs(e.changedTouches[0].clientY - (window.__swipeStartY||0));
+        // 從左邊緣30px內開始，橫滑50px以上，且橫向大於縱向
+        if (startX < 30 && dx > 50 && dx > dy) {
           if (moreSection) setMoreSection(null);
           else if (walletSubTab !== 'overview') setWalletSubTab('overview');
           else onBack();
