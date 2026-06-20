@@ -841,7 +841,8 @@ function TripDetailScreen({ user, trip, onBack }) {
     .sort((a,b)=>selectedDate==='待安排'?(a.createdAt||0)-(b.createdAt||0):(a.time||'').localeCompare(b.time||''));
 
   const shopFiltered = shoppingItems.filter(item => {
-    if (shopFilterCity!=='全部城市' && item.city!==shopFilterCity) return false;
+    const shopCities = shopOptions.cities || [];
+    if (shopCities.length > 1 && shopFilterCity!=='全部城市' && item.city!==shopFilterCity) return false;
     if (shopFilterMall!=='全部商場' && item.mall!==shopFilterMall) return false;
     if (shopFilterMember!=='all' && item.addedById!==shopFilterMember) return false;
     return true;
@@ -1042,10 +1043,11 @@ function TripDetailScreen({ user, trip, onBack }) {
     const cities = foodOptions.cities || [];
     const districtsMap = foodOptions.districts || {};
     const foodTypes = foodOptions.foodTypes || [];
-    const cityDistricts = foodSelectedCity !== '全部城市' ? (districtsMap[foodSelectedCity]||[]) : [];
+    const effectiveCity = cities.length === 1 ? cities[0] : foodSelectedCity;
+    const cityDistricts = effectiveCity !== '全部城市' ? (districtsMap[effectiveCity]||[]) : [];
 
     const filtered = foodItems.filter(item => {
-      if (foodSelectedCity !== '全部城市' && item.city !== foodSelectedCity) return false;
+      if (cities.length > 1 && foodSelectedCity !== '全部城市' && item.city !== foodSelectedCity) return false;
       if (foodSelectedDistricts.length > 0) {
         const itemDistricts = item.districts || (item.district ? [item.district] : []);
         if (!foodSelectedDistricts.some(d => itemDistricts.includes(d))) return false;
@@ -1067,8 +1069,8 @@ function TripDetailScreen({ user, trip, onBack }) {
             <button onClick={() => setShowManageFoodOptions(true)} style={{ fontSize:11, color:C.textMuted, background:'none', border:`1px solid ${C.border}`, borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:600 }}>管理選項</button>
           </div>
 
-          {/* 城市篩選 */}
-          {cities.length > 0 && (
+          {/* 城市篩選：只有多個城市才顯示 */}
+          {cities.length > 1 && (
             <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:6, marginBottom:4 }}>
               <button onClick={() => { setFoodSelectedCity('全部城市'); setFoodSelectedDistricts([]); }}
                 style={{ flexShrink:0, padding:'5px 12px', borderRadius:10, border:`1.5px solid ${foodSelectedCity==='全部城市'?'#D97706':C.border}`, backgroundColor:foodSelectedCity==='全部城市'?'#FEF3E8':C.bg, color:foodSelectedCity==='全部城市'?'#D97706':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
@@ -1083,7 +1085,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           )}
 
-          {/* 地區篩選（依城市動態顯示）*/}
+          {/* 地區篩選：城市只有一個時自動用那個城市的地區 */}
           {cityDistricts.length > 0 && (
             <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:6, marginBottom:4 }}>
               {cityDistricts.map(d => (
@@ -1785,7 +1787,15 @@ function TripDetailScreen({ user, trip, onBack }) {
     const d = foodModal.data || {};
     const cities = foodOptions.cities || [];
     const foodTypes = foodOptions.foodTypes || [];
-    const cityDistricts = d.city ? (foodOptions.districts||{})[d.city]||[] : [];
+    const autoCity = cities.length === 1 ? cities[0] : null;
+    const activeCity = d.city || autoCity || '';
+    const cityDistricts = activeCity ? (foodOptions.districts||{})[activeCity]||[] : [];
+    // 城市只有一個時，自動帶入城市
+    React.useEffect(() => {
+      if (cities.length === 1 && !d.city) {
+        setFoodModal(p=>({...p,data:{...p.data,city:cities[0]}}));
+      }
+    }, []);
     const districts = d.districts || [];
     const branches = d.branches || [];
 
@@ -1817,8 +1827,8 @@ function TripDetailScreen({ user, trip, onBack }) {
             <ImeInput key="food-name" style={gs.input} placeholder="例：一蘭拉麵" value={d.name||''} onChange={v=>setFoodModal(p=>({...p,data:{...p.data,name:v}}))} />
           </div>
 
-          {/* 城市 */}
-          {cities.length > 0 && (
+          {/* 城市：多個城市才顯示選擇 */}
+          {cities.length > 1 && (
             <div style={{ marginBottom:14 }}>
               <label style={gs.label}>城市</label>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
@@ -2012,12 +2022,14 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ fontSize:16, fontWeight:800 }}>{shoppingModal.data?.id?'編輯購物':'新增購物'}</div>
           <button onClick={() => setShoppingModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>🏙️ 城市</label>
-          <select value={shoppingModal.data?.city||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,city:e.target.value,mall:''}}))} style={{ ...gs.input, cursor:'pointer' }}>
-            <option value="">無特定城市</option>
-            {(shopOptions.cities||[]).map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
+        {(shopOptions.cities||[]).length > 1 && (
+          <div style={{ marginBottom:12 }}><label style={gs.label}>🏙️ 城市</label>
+            <select value={shoppingModal.data?.city||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,city:e.target.value,mall:''}}))} style={{ ...gs.input, cursor:'pointer' }}>
+              <option value="">無特定城市</option>
+              {(shopOptions.cities||[]).map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ marginBottom:12 }}><label style={gs.label}>🏪 商場</label>
           <select value={shoppingModal.data?.mall||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,mall:e.target.value}}))} style={{ ...gs.input, cursor:'pointer' }}>
             <option value="">無特定商場</option>
