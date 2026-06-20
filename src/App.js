@@ -724,9 +724,6 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [shopFilterMall, setShopFilterMall] = useState('全部商場');
   const [shopFilterMember, setShopFilterMember] = useState('all');
   const [showManageShopOptions, setShowManageShopOptions] = useState(false);
-  const [newShopCity, setNewShopCity] = useState('');
-  const [newShopMall, setNewShopMall] = useState({});
-  const [newShopLocation, setNewShopLocation] = useState({});
 
   const [showSettlement, setShowSettlement] = useState(false);
   const [todoModal, setTodoModal] = useState({ open:false, data:null });
@@ -1913,13 +1910,13 @@ function TripDetailScreen({ user, trip, onBack }) {
   // 管理美食選項 Modal
   const ManageFoodOptionsModal = () => {
     const [newCity, setNewCity] = useState('');
-    const [newDistrict, setNewDistrict] = useState({});
+    const [newDistrict, setNewDistrict] = useState('');
+    const [newDistrictCity, setNewDistrictCity] = useState('');
     const [newFoodType, setNewFoodType] = useState('');
     if (!showManageFoodOptions) return null;
     const cities = foodOptions.cities || [];
     const districtsMap = foodOptions.districts || {};
     const foodTypes = foodOptions.foodTypes || [];
-
     const updateOpts = (newOpts) => { setFoodOptions(newOpts); saveFoodOptions(newOpts); };
 
     return (
@@ -1930,63 +1927,78 @@ function TripDetailScreen({ user, trip, onBack }) {
             <button onClick={() => setShowManageFoodOptions(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
           </div>
 
-          {/* 城市管理 */}
+          {/* 城市 */}
           <div style={{ marginBottom:20 }}>
             <label style={gs.label}>🏙️ 城市</label>
-            {cities.map(city => (
-              <div key={city} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', backgroundColor:C.bg, borderRadius:10, border:`1px solid ${C.border}`, marginBottom:6 }}>
-                <span style={{ flex:1, fontSize:14, fontWeight:600 }}>{city}</span>
-                <button onClick={() => updateOpts({...foodOptions,cities:cities.filter(c=>c!==city),districts:Object.fromEntries(Object.entries(districtsMap).filter(([k])=>k!==city))})}
-                  style={{ background:'none', border:'none', color:C.danger, fontSize:16, cursor:'pointer' }}>×</button>
-              </div>
-            ))}
-            <div style={{ display:'flex', gap:8, marginTop:8 }}>
-              <input style={{ ...gs.input, flex:1 }} autoComplete="off" placeholder="新增城市..." value={newCity} onChange={e=>setNewCity(e.target.value)}
-                onKeyDown={e=>{ if(e.key==='Enter'&&newCity.trim()){ updateOpts({...foodOptions,cities:[...cities,newCity.trim()]}); setNewCity(''); }}} />
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+              {cities.map(city => (
+                <div key={city} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#D97706', borderRadius:20 }}>
+                  <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{city}</span>
+                  <button onClick={() => updateOpts({...foodOptions, cities:cities.filter(c=>c!==city), districts:Object.fromEntries(Object.entries(districtsMap).filter(([k])=>k!==city))})}
+                    style={{ background:'none', border:'none', color:'rgba(255,255,255,0.8)', fontSize:16, cursor:'pointer', lineHeight:1, padding:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <ImeInput key="manage-city" style={{ ...gs.input, flex:1 }} placeholder="新增城市..." value={newCity} onChange={v=>setNewCity(v)} />
               <button onClick={() => { if(!newCity.trim())return; updateOpts({...foodOptions,cities:[...cities,newCity.trim()]}); setNewCity(''); }}
                 style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#D97706', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
           </div>
 
-          {/* 各城市地區 */}
-          {cities.map(city => (
-            <div key={city} style={{ marginBottom:20 }}>
-              <label style={gs.label}>📍 {city} 地區</label>
-              {(districtsMap[city]||[]).map(d => (
-                <div key={d} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', backgroundColor:C.bg, borderRadius:10, border:`1px solid ${C.border}`, marginBottom:6 }}>
-                  <span style={{ flex:1, fontSize:14, fontWeight:600 }}>{d}</span>
-                  <button onClick={() => updateOpts({...foodOptions,districts:{...districtsMap,[city]:(districtsMap[city]||[]).filter(x=>x!==d)}})}
-                    style={{ background:'none', border:'none', color:C.danger, fontSize:16, cursor:'pointer' }}>×</button>
+          {/* 地區（直接選城市 + 輸入地區）*/}
+          <div style={{ marginBottom:20 }}>
+            <label style={gs.label}>📍 地區</label>
+            {/* 顯示所有地區 */}
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+              {cities.map(city => (districtsMap[city]||[]).map(d => (
+                <div key={`${city}-${d}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:C.blueSoft, border:`1px solid ${C.blue}33`, borderRadius:20 }}>
+                  <span style={{ fontSize:11, color:C.textMuted, fontWeight:600 }}>{city} · </span>
+                  <span style={{ fontSize:13, fontWeight:700, color:C.blue }}>{d}</span>
+                  <button onClick={() => updateOpts({...foodOptions, districts:{...districtsMap,[city]:(districtsMap[city]||[]).filter(x=>x!==d)}})}
+                    style={{ background:'none', border:'none', color:C.blue, fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
                 </div>
-              ))}
-              <div style={{ display:'flex', gap:8, marginTop:6 }}>
-                <input style={{ ...gs.input, flex:1 }} autoComplete="off" placeholder={`新增 ${city} 地區...`} value={newDistrict[city]||''}
-                  onChange={e=>setNewDistrict(p=>({...p,[city]:e.target.value}))} />
-                <button onClick={() => { const v=(newDistrict[city]||'').trim(); if(!v)return; updateOpts({...foodOptions,districts:{...districtsMap,[city]:[...(districtsMap[city]||[]),v]}}); setNewDistrict(p=>({...p,[city]:''})); }}
-                  style={{ padding:'12px 14px', border:'none', borderRadius:12, backgroundColor:C.blue, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
-              </div>
+              )))}
             </div>
-          ))}
+            <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+              <select value={newDistrictCity} onChange={e=>setNewDistrictCity(e.target.value)}
+                style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px' }}>
+                <option value="">選城市</option>
+                {cities.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+              <ImeInput key="manage-district" style={{ ...gs.input, flex:1 }} placeholder="新增地區..." value={newDistrict} onChange={v=>setNewDistrict(v)} />
+              <button onClick={() => {
+                if(!newDistrict.trim()) return;
+                const city = newDistrictCity || cities[0];
+                if(!city) return;
+                updateOpts({...foodOptions, districts:{...districtsMap,[city]:[...(districtsMap[city]||[]),newDistrict.trim()]}});
+                setNewDistrict('');
+              }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:C.blue, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
+            </div>
+            {cities.length===0 && <div style={{ fontSize:11, color:C.textMuted }}>請先新增城市</div>}
+          </div>
 
           {/* 食物種類 */}
           <div style={{ marginBottom:20 }}>
             <label style={gs.label}>🍜 食物種類</label>
-            {foodTypes.map(ft => (
-              <div key={ft} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', backgroundColor:C.bg, borderRadius:10, border:`1px solid ${C.border}`, marginBottom:6 }}>
-                <span style={{ flex:1, fontSize:14, fontWeight:600 }}>{ft}</span>
-                <button onClick={() => updateOpts({...foodOptions,foodTypes:foodTypes.filter(x=>x!==ft)})}
-                  style={{ background:'none', border:'none', color:C.danger, fontSize:16, cursor:'pointer' }}>×</button>
-              </div>
-            ))}
-            <div style={{ display:'flex', gap:8, marginTop:8 }}>
-              <input style={{ ...gs.input, flex:1 }} autoComplete="off" placeholder="新增食物種類..." value={newFoodType} onChange={e=>setNewFoodType(e.target.value)}
-                onKeyDown={e=>{ if(e.key==='Enter'&&newFoodType.trim()){ updateOpts({...foodOptions,foodTypes:[...foodTypes,newFoodType.trim()]}); setNewFoodType(''); }}} />
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+              {foodTypes.map(ft => (
+                <div key={ft} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:C.greenSoft, border:`1px solid ${C.green}33`, borderRadius:20 }}>
+                  <span style={{ fontSize:13, fontWeight:700, color:C.green }}>{ft}</span>
+                  <button onClick={() => updateOpts({...foodOptions,foodTypes:foodTypes.filter(x=>x!==ft)})}
+                    style={{ background:'none', border:'none', color:C.green, fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <ImeInput key="manage-foodtype" style={{ ...gs.input, flex:1 }} placeholder="新增食物種類..." value={newFoodType} onChange={v=>setNewFoodType(v)} />
               <button onClick={() => { if(!newFoodType.trim())return; updateOpts({...foodOptions,foodTypes:[...foodTypes,newFoodType.trim()]}); setNewFoodType(''); }}
                 style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:C.green, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
           </div>
 
-          <button onClick={() => setShowManageFoodOptions(false)} style={{ width:'100%', padding:14, border:`1px solid ${C.border}`, borderRadius:13, fontSize:15, fontWeight:700, cursor:'pointer', backgroundColor:C.bg, color:C.text }}>完成</button>
+          <button onClick={() => setShowManageFoodOptions(false)}
+            style={{ width:'100%', padding:14, border:`1px solid ${C.border}`, borderRadius:13, fontSize:15, fontWeight:700, cursor:'pointer', backgroundColor:C.bg, color:C.text }}>完成</button>
         </div>
       </div>
     );
@@ -2021,45 +2033,79 @@ function TripDetailScreen({ user, trip, onBack }) {
   );
 
   // 管理購物選項 Modal
-  const ManageShopOptionsModal = () => !showManageShopOptions ? null : (
-    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:300 }}>
-      <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <div style={{ fontSize:16, fontWeight:800 }}>管理購物選項</div>
-          <button onClick={() => setShowManageShopOptions(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
-        </div>
-        <div style={{ marginBottom:20 }}>
-          <label style={gs.label}>🏙️ 城市</label>
-          {(shopOptions.cities||[]).map(c => (
-            <div key={c} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', backgroundColor:C.bg, borderRadius:10, border:`1px solid ${C.border}`, marginBottom:6 }}>
-              <span style={{ flex:1, fontSize:14, fontWeight:600 }}>{c}</span>
-              <button onClick={() => { const o={...shopOptions,cities:(shopOptions.cities||[]).filter(x=>x!==c)}; setShopOptions(o);saveShopOptions(o); }} style={{ background:'none', border:'none', color:C.danger, fontSize:16, cursor:'pointer' }}>×</button>
-            </div>
-          ))}
-          <div style={{ display:'flex', gap:8, marginTop:8 }}>
-            <input style={{ ...gs.input, flex:1 }} placeholder="新增城市..." value={newShopCity} onChange={e=>setNewShopCity(e.target.value)} />
-            <button onClick={() => { if(!newShopCity.trim())return; const o={...shopOptions,cities:[...(shopOptions.cities||[]),newShopCity.trim()]}; setShopOptions(o);saveShopOptions(o);setNewShopCity(''); }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
+  const ManageShopOptionsModal = () => {
+    const [newCity, setNewCity] = useState('');
+    const [newMall, setNewMall] = useState('');
+    const [newMallCity, setNewMallCity] = useState('');
+    if (!showManageShopOptions) return null;
+    const cities = shopOptions.cities || [];
+    const mallsMap = shopOptions.malls || {};
+    const updateOpts = (o) => { setShopOptions(o); saveShopOptions(o); };
+
+    return (
+      <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:300 }}>
+        <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'90vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <div style={{ fontSize:16, fontWeight:800 }}>管理購物選項</div>
+            <button onClick={() => setShowManageShopOptions(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
           </div>
-        </div>
-        {(shopOptions.cities||[]).map(city => (
-          <div key={city} style={{ marginBottom:20 }}>
-            <label style={gs.label}>🏪 {city} 商場</label>
-            {((shopOptions.malls||{})[city]||[]).map(m => (
-              <div key={m} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', backgroundColor:C.bg, borderRadius:10, border:`1px solid ${C.border}`, marginBottom:6 }}>
-                <span style={{ flex:1, fontSize:14, fontWeight:600 }}>{m}</span>
-                <button onClick={() => { const o={...shopOptions,malls:{...(shopOptions.malls||{}),[city]:((shopOptions.malls||{})[city]||[]).filter(x=>x!==m)}}; setShopOptions(o);saveShopOptions(o); }} style={{ background:'none', border:'none', color:C.danger, fontSize:16, cursor:'pointer' }}>×</button>
-              </div>
-            ))}
-            <div style={{ display:'flex', gap:8, marginTop:6 }}>
-              <input style={{ ...gs.input, flex:1 }} placeholder={`新增 ${city} 商場...`} value={newShopMall[city]||''} onChange={e=>setNewShopMall(p=>({...p,[city]:e.target.value}))} />
-              <button onClick={() => { const v=(newShopMall[city]||'').trim(); if(!v)return; const o={...shopOptions,malls:{...(shopOptions.malls||{}),[city]:[...((shopOptions.malls||{})[city]||[]),v]}}; setShopOptions(o);saveShopOptions(o);setNewShopMall(p=>({...p,[city]:''})); }} style={{ padding:'12px 14px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
+
+          {/* 城市 */}
+          <div style={{ marginBottom:20 }}>
+            <label style={gs.label}>🏙️ 城市</label>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+              {cities.map(city => (
+                <div key={city} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#BE185D', borderRadius:20 }}>
+                  <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{city}</span>
+                  <button onClick={() => updateOpts({...shopOptions, cities:cities.filter(c=>c!==city), malls:Object.fromEntries(Object.entries(mallsMap).filter(([k])=>k!==city))})}
+                    style={{ background:'none', border:'none', color:'rgba(255,255,255,0.8)', fontSize:16, cursor:'pointer', lineHeight:1, padding:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <ImeInput key="shop-manage-city" style={{ ...gs.input, flex:1 }} placeholder="新增城市..." value={newCity} onChange={v=>setNewCity(v)} />
+              <button onClick={() => { if(!newCity.trim())return; updateOpts({...shopOptions,cities:[...cities,newCity.trim()]}); setNewCity(''); }}
+                style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
           </div>
-        ))}
-        <button onClick={() => setShowManageShopOptions(false)} style={{ width:'100%', padding:14, border:`1px solid ${C.border}`, borderRadius:13, fontSize:15, fontWeight:700, cursor:'pointer', backgroundColor:C.bg, color:C.text }}>完成</button>
+
+          {/* 商場（直接選城市 + 輸入商場）*/}
+          <div style={{ marginBottom:20 }}>
+            <label style={gs.label}>🏪 商場</label>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+              {cities.map(city => (mallsMap[city]||[]).map(m => (
+                <div key={`${city}-${m}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#FDE8F3', border:'1px solid #F9B8DA', borderRadius:20 }}>
+                  <span style={{ fontSize:11, color:'#BE185D', fontWeight:600, opacity:0.7 }}>{city} · </span>
+                  <span style={{ fontSize:13, fontWeight:700, color:'#BE185D' }}>{m}</span>
+                  <button onClick={() => updateOpts({...shopOptions, malls:{...mallsMap,[city]:(mallsMap[city]||[]).filter(x=>x!==m)}})}
+                    style={{ background:'none', border:'none', color:'#BE185D', fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
+                </div>
+              )))}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <select value={newMallCity} onChange={e=>setNewMallCity(e.target.value)}
+                style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px' }}>
+                <option value="">選城市</option>
+                {cities.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+              <ImeInput key="shop-manage-mall" style={{ ...gs.input, flex:1 }} placeholder="新增商場..." value={newMall} onChange={v=>setNewMall(v)} />
+              <button onClick={() => {
+                if(!newMall.trim()) return;
+                const city = newMallCity || cities[0];
+                if(!city) return;
+                updateOpts({...shopOptions, malls:{...mallsMap,[city]:[...(mallsMap[city]||[]),newMall.trim()]}});
+                setNewMall('');
+              }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
+            </div>
+            {cities.length===0 && <div style={{ fontSize:11, color:C.textMuted }}>請先新增城市</div>}
+          </div>
+
+          <button onClick={() => setShowManageShopOptions(false)}
+            style={{ width:'100%', padding:14, border:`1px solid ${C.border}`, borderRadius:13, fontSize:15, fontWeight:700, cursor:'pointer', backgroundColor:C.bg, color:C.text }}>完成</button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // 記帳 Modal
   const WalletModal = () => {
