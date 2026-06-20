@@ -761,9 +761,14 @@ const ExpandableMemberCard = React.memo(function ExpandableMemberCard({ m, bal, 
           {detail.map((w,wi)=>{
             const isIn = w.type==='存入';
             const allUids = Object.keys(effRates).length>0?[]:[];
-            const per = isIn
-              ? Math.floor((Number(w.amount)||0)/((w.contributorIds||[]).length||1))
-              : Math.floor((Number(w.amount)||0)/((w.forMemberIds||[]).length||1));
+            const totalAmt = Number(w.amount)||0;
+            const ids2 = isIn ? (w.contributorIds||[]) : (w.forMemberIds||[]);
+            const n3 = ids2.length||1;
+            const per = Math.floor(totalAmt/n3);
+            const rem3 = totalAmt - per*n3;
+            // 找這個成員是第幾個（決定是否多付1）
+            const memberIdx = ids2.indexOf(m.uid);
+            const actualPer = per + (memberIdx>=0 && memberIdx<rem3 ? 1 : 0);
             return (
               <div key={wi} style={{ display:'flex', alignItems:'center', gap:8, paddingBottom:8, marginBottom:8, borderBottom:wi<detail.length-1?`1px solid ${C.border}`:'none' }}>
                 <div style={{ width:8, height:8, borderRadius:'50%', backgroundColor:isIn?C.green:C.danger, flexShrink:0 }} />
@@ -772,7 +777,7 @@ const ExpandableMemberCard = React.memo(function ExpandableMemberCard({ m, bal, 
                   <div style={{ fontSize:10, color:C.textMuted }}>{w.date} · {isIn?`存入（每人 ${SYM[w.currency]||''}${per.toLocaleString()}）`:`支出（每人 ${SYM[w.currency]||''}${per.toLocaleString()}）`}</div>
                 </div>
                 <div style={{ fontSize:12, fontWeight:800, color:isIn?C.green:C.danger, flexShrink:0 }}>
-                  {isIn?'+':'-'}{SYM[w.currency]||''}{per.toLocaleString()}
+                  {isIn?'+':'-'}{SYM[w.currency]||''}{actualPer.toLocaleString()}
                 </div>
               </div>
             );
@@ -1014,6 +1019,10 @@ const getCategoryStyle = (cat) => {
 function TripDetailScreen({ user, trip, onBack }) {
   const color = trip.color || C.blue;
   const [tab, setTab] = useState('itinerary');
+  const [swipeDelta, setSwipeDelta] = useState(0); // 滑動位移
+  const swipeStartX = React.useRef(0);
+  const swipeStartY = React.useRef(0);
+  const isSwiping = React.useRef(false);
 
   // ── 資料 state ──
   const [members, setMembers] = useState([]);
@@ -1333,7 +1342,6 @@ function TripDetailScreen({ user, trip, onBack }) {
   const TripHeader = () => (
     <div style={{ padding:'52px 20px 14px', backgroundColor:color+'12', borderBottom:`1px solid ${color}33`, flexShrink:0 }}>
       <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-        <button onClick={onBack} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, width:36, height:36, fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.text, flexShrink:0 }}>←</button>
         <div style={{ width:40, height:40, borderRadius:12, backgroundColor:color+'22', border:`1.5px solid ${color}55`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>{trip.emoji||'✈️'}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:16, fontWeight:800 }}>{trip.name}</div>
@@ -1748,7 +1756,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
         {/* 次頁 header */}
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-          <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
+          <div style={{ width:8 }} />
           <div style={{ fontSize:15, fontWeight:800 }}>{pageTitle}</div>
         </div>
 
@@ -2132,7 +2140,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       return (
         <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
           <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
+            <div style={{ width:8 }} />
             <div style={{ fontSize:15, fontWeight:800 }}>{isShared?'共用備忘錄':'個人備忘錄'}</div>
           </div>
           <div style={{ padding:16, flex:1 }}>
@@ -2206,7 +2214,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       return (
         <div style={{ flex:1, overflowY:'auto' }}>
           <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
+            <div style={{ width:8 }} />
             <div style={{ fontSize:15, fontWeight:800 }}>成員（{members.length} 人）</div>
           </div>
           <div style={{ padding:20 }}>
@@ -2239,7 +2247,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     if (moreSection==='invite') return (
       <div style={{ flex:1, overflowY:'auto' }}>
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-          <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
+          <div style={{ width:8 }} />
           <div style={{ fontSize:15, fontWeight:800 }}>邀請碼</div>
         </div>
         <div style={{ padding:20 }}>
@@ -2895,7 +2903,11 @@ function TripDetailScreen({ user, trip, onBack }) {
                   </button>
                 );})}
               </div>
-              {contributorIds.length>1&&d.amount&&<div style={{ fontSize:11, color:C.green, fontWeight:700, marginTop:6 }}>每人 {Math.floor(Number(d.amount)/contributorIds.length).toLocaleString()} {d.currency||'JPY'}</div>}
+              {contributorIds.length>1&&d.amount&&(()=>{
+  const t=Number(d.amount); const n=contributorIds.length;
+  const per=Math.floor(t/n); const rem=t-per*n;
+  return <div style={{ fontSize:11, color:C.green, fontWeight:700, marginTop:6 }}>每人 {per.toLocaleString()}{rem>0?` 元（${rem} 人多付 1）`:' 元'} {d.currency||'JPY'}</div>;
+})()}
             </div>
           )}
           {isShared && d.type==='支出' && (
@@ -2934,7 +2946,11 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </button>
                     );})}
                   </div>
-                  {(d.splitReceiverIds||[]).length>0&&d.amount&&<div style={{ fontSize:11, color:C.blue, fontWeight:700, marginTop:6 }}>每人 {Math.floor(Number(d.amount)/(d.splitReceiverIds||[]).length).toLocaleString()} {d.currency||'JPY'}</div>}
+                  {(d.splitReceiverIds||[]).length>0&&d.amount&&(()=>{
+  const t=Number(d.amount); const n=(d.splitReceiverIds||[]).length;
+  const per=Math.floor(t/n); const rem=t-per*n;
+  return <div style={{ fontSize:11, color:C.blue, fontWeight:700, marginTop:6 }}>每人 {per.toLocaleString()}{rem>0?` 元（${rem} 人多付 1）`:' 元'} {d.currency||'JPY'}</div>;
+})()}
                 </div>
               )}
             </div>
@@ -3181,21 +3197,40 @@ function TripDetailScreen({ user, trip, onBack }) {
   // 主渲染
   // ════════════════════════════════════════
   return (
-    <div style={{ ...gs.app, maxHeight:'100vh' }}
+    <div style={{ ...gs.app, maxHeight:'100vh',
+      transform: swipeDelta > 0 ? `translateX(${Math.min(swipeDelta, window.innerWidth)}px)` : 'none',
+      transition: swipeDelta === 0 ? 'transform 0.25s ease' : 'none',
+      boxShadow: swipeDelta > 0 ? `-8px 0 20px rgba(0,0,0,0.15)` : 'none',
+    }}
       onTouchStart={e => {
-        window.__swipeStartX = e.touches[0].clientX;
-        window.__swipeStartY = e.touches[0].clientY;
+        swipeStartX.current = e.touches[0].clientX;
+        swipeStartY.current = e.touches[0].clientY;
+        isSwiping.current = false;
+      }}
+      onTouchMove={e => {
+        const dx = e.touches[0].clientX - swipeStartX.current;
+        const dy = Math.abs(e.touches[0].clientY - swipeStartY.current);
+        // 只有從左邊緣30px內開始、且橫向大於縱向才啟動
+        if (!isSwiping.current && swipeStartX.current < 30 && dx > 10 && dx > dy) {
+          isSwiping.current = true;
+        }
+        if (isSwiping.current && dx > 0) {
+          setSwipeDelta(dx);
+        }
       }}
       onTouchEnd={e => {
-        const startX = window.__swipeStartX || 0;
-        const dx = e.changedTouches[0].clientX - startX;
-        const dy = Math.abs(e.changedTouches[0].clientY - (window.__swipeStartY||0));
-        // 從左邊緣30px內開始，橫滑50px以上，且橫向大於縱向
-        if (startX < 30 && dx > 50 && dx > dy) {
+        const dx = e.changedTouches[0].clientX - swipeStartX.current;
+        if (isSwiping.current && dx > 80) {
+          // 滑夠了，觸發返回
+          setSwipeDelta(0);
           if (moreSection) setMoreSection(null);
           else if (walletSubTab !== 'overview') setWalletSubTab('overview');
           else onBack();
+        } else {
+          // 不夠，彈回來
+          setSwipeDelta(0);
         }
+        isSwiping.current = false;
       }}>
       {TripHeader()}
       {tab==='itinerary' && ItineraryTab()}
