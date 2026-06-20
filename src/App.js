@@ -776,7 +776,7 @@ const ExpandableTransferCard = React.memo(function ExpandableTransferCard({
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:12, fontWeight:600, color:C.text }}>{r.note||'代墊'}</div>
                 <div style={{ fontSize:10, color:C.textMuted }}>
-                  {members.find(m=>m.uid===r.payerId)?.displayName||'?'} → {members.find(m=>m.uid===r.receiverId)?.displayName||'?'}
+                  {members.find(m=>m.uid===r.receiverId)?.displayName||'?'} 欠 {members.find(m=>m.uid===r.payerId)?.displayName||'?'}
                 </div>
               </div>
               <div style={{ fontSize:12, fontWeight:800, color:C.purple }}>{SYM[r.currency]||''}{r.amount.toLocaleString()}</div>
@@ -1398,12 +1398,15 @@ function TripDetailScreen({ user, trip, onBack }) {
       const cur = w.currency || 'TWD';
       const perPerson = Math.floor(amt / splitTo.length);
       const remainder = amt - perPerson * splitTo.length;
-      splitTo.forEach((uid, idx) => {
+      // 用固定排序決定誰多付
+      const sortedSplitTo = [...splitTo].sort();
+      sortedSplitTo.forEach((uid, idx) => {
         if (!balance[uid]) balance[uid] = {};
         if (!balance[payer]) balance[payer] = {};
         if (uid !== payer) {
-          balance[uid][cur] = (balance[uid][cur]||0) - (perPerson + (idx < remainder ? 1 : 0));
-          balance[payer][cur] = (balance[payer][cur]||0) + (perPerson + (idx < remainder ? 1 : 0));
+          const extra = idx < remainder ? 1 : 0;
+          balance[uid][cur] = (balance[uid][cur]||0) - (perPerson + extra);
+          balance[payer][cur] = (balance[payer][cur]||0) + (perPerson + extra);
         }
       });
     });
@@ -1898,36 +1901,7 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 帳目列表 */}
         <div style={{ padding:16, flex:1 }}>
-          {/* 個人帳：顯示公費中分攤到我的項目 */}
-          {!isShared && currentDate && walletItems.filter(w=>w.date===currentDate).length>0 && (
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase', marginBottom:8 }}>📊 公費分攤到我（{currentDate}）</div>
-              {walletItems.filter(w=>w.date===currentDate).map(w=>{
-                const allUids=members.map(m=>m.uid);
-                const ids = w.type==='存入'?(w.contributorIds||allUids):(w.forMemberIds||allUids);
-                if(!ids.includes(user.uid)) return null;
-                const n=ids.length||1;
-                const total=Number(w.amount)||0;
-                const per=Math.floor(total/n);
-                const myIdx=ids.indexOf(user.uid);
-                const rem=total-per*n;
-                const myAmt=per+(myIdx>=0&&myIdx<rem?1:0);
-                const isIn=w.type==='存入';
-                return (
-                  <div key={w.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', backgroundColor:isIn?C.greenSoft:C.purpleSoft, borderRadius:10, marginBottom:6, border:`1px solid ${isIn?C.green:C.purple}22` }}>
-                    <div style={{ width:8, height:8, borderRadius:'50%', backgroundColor:isIn?C.green:C.purple, flexShrink:0 }} />
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.text }}>{w.name}</div>
-                      <div style={{ fontSize:10, color:C.textMuted }}>{isIn?'我存入的':'分攤支出'} · 共 {n} 人</div>
-                    </div>
-                    <div style={{ fontSize:13, fontWeight:800, color:isIn?C.green:C.purple }}>
-                      {isIn?'+':'-'}{SYM[w.currency]||''}{myAmt.toLocaleString()} {w.currency}
-                    </div>
-                  </div>
-                );
-              }).filter(Boolean)}
-            </div>
-          )}
+
           {filteredItems.length===0 ? (
             <div style={{ textAlign:'center', padding:'20px 20px', color:C.textMuted, fontSize:13 }}>{currentDate?`${currentDate} 尚無個人帳目`:'尚無帳目，點右下角 ＋ 新增'}</div>
           ) : (
