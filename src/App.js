@@ -203,7 +203,7 @@ function AuthScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label style={gs.label}>你的名稱</label>
-              <ImeInput style={gs.input} placeholder="輸入暱稱" value={name} onChange={v=>setName(v)} />
+              <ImeInput key="auth-name" style={gs.input} placeholder="輸入暱稱" value={name} onChange={v=>setName(v)} />
             </div>
             <div>
               <label style={gs.label}>Email</label>
@@ -582,39 +582,70 @@ function JoinTripModal({ user, onClose, onJoined }) {
 // ─── 旅程內頁 ─────────────────────────────────────────────────
 // ─── 確認刪除 Dialog ──────────────────────────────────────────
 // ImeInput：解決 iOS 注音輸入消失問題
-function ImeInput({ value, onChange, style, placeholder, type, autoComplete, multiline, rows }) {
+// 完全 uncontrolled，避免 React re-render 收起鍵盤
+const ImeInput = React.memo(function ImeInput({ value, onChange, style, placeholder, type, autoComplete, multiline, rows }) {
   const ref = React.useRef(null);
   const composing = React.useRef(false);
-  const prevValue = React.useRef(value);
+  const onChangeRef = React.useRef(onChange);
+  onChangeRef.current = onChange;
 
+  // 只在 mount 時設定初始值，之後完全 uncontrolled
+  // 這樣 parent re-render 不會觸發 input 重新渲染，鍵盤不會收起
+  const initialized = React.useRef(false);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    if (!initialized.current) {
+      initialized.current = true;
+      ref.current.value = value || '';
+    }
+  }, []); // eslint-disable-line
+
+  // 當 modal 重新開啟（value 從 '' 變成有值，或 id 改變時）重設
+  const prevOpenValue = React.useRef('__UNSET__');
   React.useEffect(() => {
     if (!ref.current) return;
     if (composing.current) return;
-    if (ref.current.value !== (value || '')) {
-      ref.current.value = value || '';
+    // 用一個特殊初始值判斷是否是第一次
+    const newVal = value || '';
+    if (prevOpenValue.current === '__UNSET__') {
+      prevOpenValue.current = newVal;
+      ref.current.value = newVal;
+      return;
     }
-    prevValue.current = value;
+    // 只有當值從外部完全清空（代表 modal 關閉重開）才重設
+    if (newVal === '' && prevOpenValue.current !== '') {
+      prevOpenValue.current = newVal;
+      ref.current.value = newVal;
+    } else {
+      prevOpenValue.current = newVal;
+    }
   }, [value]);
 
-  const handlers = {
+  const sharedProps = {
     ref,
-    defaultValue: value || '',
     placeholder,
     style,
     autoComplete: autoComplete || 'off',
     onCompositionStart: () => { composing.current = true; },
     onCompositionEnd: (e) => {
       composing.current = false;
-      onChange(e.target.value);
+      onChangeRef.current(e.target.value);
     },
     onChange: (e) => {
-      if (!composing.current) onChange(e.target.value);
+      if (!composing.current) onChangeRef.current(e.target.value);
+    },
+    onBlur: (e) => {
+      if (!composing.current) onChangeRef.current(e.target.value);
     },
   };
 
-  if (multiline) return <textarea {...handlers} rows={rows || 3} />;
-  return <input type={type || 'text'} {...handlers} />;
-}
+  if (multiline) return <textarea {...sharedProps} rows={rows || 3} />;
+  return <input type={type || 'text'} {...sharedProps} />;
+}, (prev, next) => {
+  // 只有當 value 從有值變成空值（modal 重開）才重新渲染
+  const shouldUpdate = (next.value === '' && prev.value !== '') || (prev.value === '' && next.value !== '');
+  return !shouldUpdate; // true = 不重新渲染
+});
 
 function ConfirmDialog({ isOpen, onClose, onConfirm, title, message }) {
   if (!isOpen) return null;
@@ -1728,10 +1759,10 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div><label style={gs.label}>時間</label><input type="time" value={modal.data?.time||''} onChange={e=>setModal(p=>({...p,data:{...p.data,time:e.target.value}}))} style={gs.input} /></div>
         </div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>類別</label><select value={modal.data?.category||'景點'} onChange={e=>setModal(p=>({...p,data:{...p.data,category:e.target.value}}))} style={{ ...gs.input, cursor:'pointer' }}>{['景點','美食','購物','交通','住宿','其他'].map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput style={gs.input} placeholder="例：逛淺草寺" value={modal.data?.name||''} onChange={v=>setModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>📍 地點</label><ImeInput style={gs.input} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={v=>setModal(p=>({...p,data:{...p.data,location:v}}))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput key="itin-name" style={gs.input} placeholder="例：逛淺草寺" value={modal.data?.name||''} onChange={v=>setModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>📍 地點</label><ImeInput key="itin-loc" style={gs.input} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={v=>setModal(p=>({...p,data:{...p.data,location:v}}))} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={modal.data?.mapUrl||''} onChange={e=>setModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>備註</label><ImeInput multiline value={modal.data?.note||''} onChange={v=>setModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>備註</label><ImeInput key="itin-note" multiline value={modal.data?.note||''} onChange={v=>setModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <div style={{ marginBottom:16 }}><label style={gs.label}>相片（最多5張）</label>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             {tempPhotos.map((url,i) => (
@@ -1786,7 +1817,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {/* 店名 */}
           <div style={{ marginBottom:14 }}>
             <label style={gs.label}>店家名稱 *</label>
-            <ImeInput style={gs.input} placeholder="例：一蘭拉麵" value={d.name||''} onChange={v=>setFoodModal(p=>({...p,data:{...p.data,name:v}}))} />
+            <ImeInput key="food-name" style={gs.input} placeholder="例：一蘭拉麵" value={d.name||''} onChange={v=>setFoodModal(p=>({...p,data:{...p.data,name:v}}))} />
           </div>
 
           {/* 城市 */}
@@ -1865,7 +1896,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {/* 備註 */}
           <div style={{ marginBottom:18 }}>
             <label style={gs.label}>備註（選填）</label>
-            <ImeInput multiline value={d.note||''} onChange={v=>setFoodModal(p=>({...p,data:{...p.data,note:v}}))} placeholder="必點菜色、注意事項..." rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} />
+            <ImeInput key="food-note" multiline value={d.note||''} onChange={v=>setFoodModal(p=>({...p,data:{...p.data,note:v}}))} placeholder="必點菜色、注意事項..." rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} />
           </div>
 
           <button onClick={() => {
@@ -1981,9 +2012,9 @@ function TripDetailScreen({ user, trip, onBack }) {
             {((shopOptions.malls||{})[shoppingModal.data?.city]||[]).map(m=><option key={m} value={m}>{m}</option>)}
           </select>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>🛍️ 商品名稱 *</label><ImeInput style={gs.input} placeholder="例：Matin Kim 外套" value={shoppingModal.data?.name||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>🛍️ 商品名稱 *</label><ImeInput key="shop-name" style={gs.input} placeholder="例：Matin Kim 外套" value={shoppingModal.data?.name||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>🌐 地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={shoppingModal.data?.mapUrl||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
-        <div style={{ marginBottom:16 }}><label style={gs.label}>💡 備註</label><ImeInput multiline value={shoppingModal.data?.note||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,note:v}}))} rows={2} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:16 }}><label style={gs.label}>💡 備註</label><ImeInput key="shop-note" multiline value={shoppingModal.data?.note||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,note:v}}))} rows={2} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => { if(!shoppingModal.data?.name?.trim())return; const fd={...shoppingModal.data,isBought:shoppingModal.data.isBought||false,addedByName:user.displayName||user.email,addedById:user.uid,createdAt:shoppingModal.data.createdAt||Date.now()}; const n=shoppingModal.data.id?shoppingItems.map(i=>i.id===shoppingModal.data.id?fd:i):[...shoppingItems,{...fd,id:Date.now()}]; setShoppingItems(n);saveShopping(n);setShoppingModal({open:false,data:null}); }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff' }}>確認儲存</button>
       </div>
     </div>
@@ -2058,7 +2089,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
 
           {/* 名稱 */}
-          <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput style={gs.input} placeholder="例：晚餐、計程車" value={d.name||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
+          <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput key="wallet-name" style={gs.input} placeholder="例：晚餐、計程車" value={d.name||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
 
           {/* 金額 + 計算機 */}
           <div style={{ backgroundColor:C.bg, borderRadius:14, padding:14, marginBottom:12 }}>
@@ -2142,7 +2173,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           )}
 
           <div style={{ marginBottom:12 }}><label style={gs.label}>日期</label><input type="date" style={gs.input} value={d.date||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,date:e.target.value}}))} /></div>
-          <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput style={gs.input} placeholder="選填" value={d.note||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,note:v}}))} /></div>
+          <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput key="wallet-note" style={gs.input} placeholder="選填" value={d.note||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,note:v}}))} /></div>
 
           <button onClick={()=>{
             if(!d.name?.trim()||!d.amount||!d.date)return;
@@ -2227,8 +2258,8 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ fontSize:16, fontWeight:800 }}>{todoModal.data?.id?'編輯':'新增項目'}</div>
           <button onClick={() => setTodoModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>內容 *</label><ImeInput style={gs.input} placeholder="輸入待辦事項..." value={todoModal.data?.content||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,content:v}}))} /></div>
-        <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput multiline value={todoModal.data?.note||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>內容 *</label><ImeInput key="todo-content" style={gs.input} placeholder="輸入待辦事項..." value={todoModal.data?.content||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,content:v}}))} /></div>
+        <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput key="todo-note" multiline value={todoModal.data?.note||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => {
           if(!todoModal.data?.content?.trim())return;
           const fd={...todoModal.data,status:todoModal.data.status||false,editedByName:user.displayName||user.email,createdAt:todoModal.data.createdAt||Date.now()};
@@ -2257,7 +2288,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <button onClick={() => document.getElementById('note-photo-input').click()} style={{ width:'100%', padding:'10px', border:`1.5px dashed ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:13, cursor:'pointer', fontWeight:600 }}>📷 新增相片</button>
           <input type="file" id="note-photo-input" style={{ display:'none' }} accept="image/*" onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onloadend=()=>{ const img=new Image(); img.src=r.result; img.onload=()=>{ const c=document.createElement('canvas'); let w=img.width,h=img.height,max=800; if(w>h){if(w>max){h=h*max/w;w=max;}}else{if(h>max){w=w*max/h;h=max;}} c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);setNotePhoto(c.toDataURL('image/jpeg',0.7)); }; }; r.readAsDataURL(f); }} />
         </div>
-        <div style={{ marginBottom:16 }}><ImeInput multiline value={noteModal.data?.content||''} onChange={v=>setNoteModal(p=>({...p,data:{...p.data,content:v}}))} placeholder="輸入記事內容..." rows={5} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:16 }}><ImeInput key="note-content" multiline value={noteModal.data?.content||''} onChange={v=>setNoteModal(p=>({...p,data:{...p.data,content:v}}))} placeholder="輸入記事內容..." rows={5} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => {
           if(!noteModal.data?.content&&!notePhoto)return;
           const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`;
