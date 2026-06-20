@@ -1110,10 +1110,7 @@ const getCategoryStyle = (cat) => {
 function TripDetailScreen({ user, trip, onBack }) {
   const color = trip.color || C.blue;
   const [tab, setTab] = useState('itinerary');
-  const [swipeDelta, setSwipeDelta] = useState(0); // 滑動位移
-  const swipeStartX = React.useRef(0);
-  const swipeStartY = React.useRef(0);
-  const isSwiping = React.useRef(false);
+
 
   // ── 資料 state ──
   const [members, setMembers] = useState([]);
@@ -1441,6 +1438,10 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ fontSize:16, fontWeight:800 }}>{trip.name}</div>
           {trip.destination && <div style={{ fontSize:11, color:C.textMuted }}>📍 {trip.destination}</div>}
         </div>
+        <button onClick={onBack}
+          style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'6px 12px', color:C.textMuted, fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}>
+          離開
+        </button>
       </div>
     </div>
   );
@@ -1799,7 +1800,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               ))}
             </div>
           )}
-          <div style={{ fontSize:11, color:C.textMuted }}>{walletItems.length} 筆帳目・點此查看明細</div>
+          
         </button>
 
         {/* 個人帳務 */}
@@ -1826,7 +1827,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               <div style={{ fontSize:11, fontWeight:700, color:C.danger }}>⚠️ 有 {myTransfers.length} 筆代墊未結清</div>
             </div>
           )}
-          <div style={{ fontSize:11, color:C.textMuted }}>{personalWalletItems.length} 筆帳目・點此查看明細</div>
+          
         </button>
 
         {/* 匯率資訊 + 設定 */}
@@ -2011,36 +2012,95 @@ function TripDetailScreen({ user, trip, onBack }) {
         {/* ── 代墊結算 Modal ── */}
         {showPersonalSettlement&&(
           <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:400 }}>
-            <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+            <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'90vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                 <div style={{ fontSize:16, fontWeight:800 }}>代墊結算</div>
                 <button onClick={()=>setShowPersonalSettlement(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
               </div>
-              <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>1 JPY ≈ NT${rates.JPY}・1 KRW ≈ NT${rates.KRW}・{ratesUpdatedAt}</div>
-              {transfers.length===0 ? (
-                <div style={{ textAlign:'center',padding:'40px 20px' }}>
-                  <div style={{ fontSize:36,marginBottom:10 }}>🎉</div>
-                  <div style={{ fontSize:15,fontWeight:700,color:C.green }}>全部結清了！</div>
-                </div>
-              ) : transfers.map((t,idx)=>{
-                const fromM=members.find(m=>m.uid===t.from)||{displayName:'?'};
-                const toM=members.find(m=>m.uid===t.to)||{displayName:'?'};
-                const iAmFrom=t.from===user.uid; const iAmTo=t.to===user.uid;
-                const sk=t.from+t.to+t.currency;
-                const s=transferStates[sk]||{paidConfirmed:false,receivedConfirmed:false};
-                const done=s.paidConfirmed&&s.receivedConfirmed;
-                const settle=()=>{ const n=splitRecords.filter(r=>!((r.payerId===t.to&&r.receiverId===t.from)||(r.payerId===t.from&&r.receiverId===t.to))&&r.currency===t.currency); setSplitRecords(n);saveSplitRecords(n); setTransferStates(p=>{const np={...p};delete np[sk];return np;}); };
-                return (
-                  <ExpandableTransferCard key={idx} t={t} idx={idx} fromM={fromM} toM={toM} iAmFrom={iAmFrom} iAmTo={iAmTo} done={done} unsettled={unsettled} SYM={SYM} toTWD={toTWD} C={C} gs={gs} transferStates={transferStates} setTransferStates={setTransferStates} splitRecords={splitRecords} saveSplitRecords={saveSplitRecords} setSplitRecords={setSplitRecords} user={user} members={members} />
-
-                );
-              })}
-              <div style={{ marginTop:8 }}>
-                <button onClick={()=>setShowPersonalSettlement(false)} style={{ width:'100%',padding:13,border:`1px solid ${C.border}`,borderRadius:12,fontSize:14,fontWeight:700,cursor:'pointer',backgroundColor:C.bg,color:C.text }}>關閉</button>
+              <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>
+                {tripCurrencies.filter(c=>c!=='TWD').map(c=>`1 ${c} ≈ NT${(manualRates[c]||rates[c]||'?')}`).join('・')}・{ratesUpdatedAt}
               </div>
+
+              {transfers.length===0 ? (
+                <div style={{ textAlign:'center', padding:'40px 20px' }}>
+                  <div style={{ fontSize:36, marginBottom:10 }}>🎉</div>
+                  <div style={{ fontSize:15, fontWeight:700, color:C.green }}>全部結清了！</div>
+                </div>
+              ) : (
+                <>
+                  {/* 上方：簡化後的最終轉帳清單 */}
+                  <div style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase', marginBottom:10 }}>💸 簡化後轉帳清單</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+                    {transfers.map((t,idx)=>(
+                      <ExpandableTransferCard key={idx} t={t} idx={idx}
+                        fromM={members.find(m=>m.uid===t.from)||{displayName:'?',uid:t.from}}
+                        toM={members.find(m=>m.uid===t.to)||{displayName:'?',uid:t.to}}
+                        iAmFrom={t.from===user.uid} iAmTo={t.to===user.uid}
+                        done={(transferStates[t.from+t.to+t.currency]?.paidConfirmed&&transferStates[t.from+t.to+t.currency]?.receivedConfirmed)||false}
+                        unsettled={unsettled} SYM={SYM} toTWD={toTWD} C={C} gs={gs}
+                        transferStates={transferStates} setTransferStates={setTransferStates}
+                        splitRecords={splitRecords} saveSplitRecords={saveSplitRecords} setSplitRecords={setSplitRecords}
+                        user={user} members={members} />
+                    ))}
+                  </div>
+
+                  {/* 下方：我的應收款 */}
+                  {transfers.filter(t=>t.to===user.uid).length>0 && (
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.green, textTransform:'uppercase', marginBottom:10 }}>💰 我的應收款</div>
+                      {transfers.filter(t=>t.to===user.uid).map((t,idx)=>{
+                        const fromM=members.find(m=>m.uid===t.from)||{displayName:'?'};
+                        // 找每筆原始代墊
+                        const originals=unsettled.filter(r=>r.payerId===user.uid&&r.receiverId===t.from&&r.currency===t.currency);
+                        return (
+                          <div key={idx} style={{ ...gs.card, padding:'14px 16px', backgroundColor:C.greenSoft, border:`1px solid ${C.green}22`, marginBottom:10 }}>
+                            <div style={{ fontSize:14, fontWeight:700, marginBottom:8 }}>{fromM.displayName} 要還我</div>
+                            {originals.map((r,ri)=>(
+                              <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderTop:ri>0?`1px solid ${C.border}`:'none' }}>
+                                <div style={{ width:6, height:6, borderRadius:'50%', backgroundColor:C.green, flexShrink:0 }} />
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:12, fontWeight:600 }}>{r.note||'代墊'}</div>
+                                </div>
+                                <div style={{ fontSize:13, fontWeight:800, color:C.green }}>{SYM[r.currency]||''}{r.amount.toLocaleString()} {r.currency}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* 下方：我的應付款 */}
+                  {transfers.filter(t=>t.from===user.uid).length>0 && (
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:C.danger, textTransform:'uppercase', marginBottom:10 }}>💸 我的應付款</div>
+                      {transfers.filter(t=>t.from===user.uid).map((t,idx)=>{
+                        const toM=members.find(m=>m.uid===t.to)||{displayName:'?'};
+                        const originals=unsettled.filter(r=>r.payerId===t.to&&r.receiverId===user.uid&&r.currency===t.currency);
+                        return (
+                          <div key={idx} style={{ ...gs.card, padding:'14px 16px', backgroundColor:C.dangerSoft, border:`1px solid ${C.danger}22`, marginBottom:10 }}>
+                            <div style={{ fontSize:14, fontWeight:700, marginBottom:8 }}>我要還 {toM.displayName}</div>
+                            {originals.map((r,ri)=>(
+                              <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderTop:ri>0?`1px solid ${C.border}`:'none' }}>
+                                <div style={{ width:6, height:6, borderRadius:'50%', backgroundColor:C.danger, flexShrink:0 }} />
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:12, fontWeight:600 }}>{r.note||'代墊'}</div>
+                                </div>
+                                <div style={{ fontSize:13, fontWeight:800, color:C.danger }}>{SYM[r.currency]||''}{r.amount.toLocaleString()} {r.currency}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+              <button onClick={()=>setShowPersonalSettlement(false)} style={{ width:'100%', padding:13, border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:700, cursor:'pointer', backgroundColor:C.bg, color:C.text }}>關閉</button>
             </div>
           </div>
         )}
+
       </div>
     );
   };
@@ -3271,41 +3331,8 @@ function TripDetailScreen({ user, trip, onBack }) {
   // 主渲染
   // ════════════════════════════════════════
   return (
-    <div style={{ ...gs.app, maxHeight:'100vh',
-      transform: swipeDelta > 0 ? `translateX(${Math.min(swipeDelta, window.innerWidth)}px)` : 'none',
-      transition: swipeDelta === 0 ? 'transform 0.25s ease' : 'none',
-      boxShadow: swipeDelta > 0 ? `-8px 0 20px rgba(0,0,0,0.15)` : 'none',
-    }}
-      onTouchStart={e => {
-        swipeStartX.current = e.touches[0].clientX;
-        swipeStartY.current = e.touches[0].clientY;
-        isSwiping.current = false;
-      }}
-      onTouchMove={e => {
-        const dx = e.touches[0].clientX - swipeStartX.current;
-        const dy = Math.abs(e.touches[0].clientY - swipeStartY.current);
-        // 只有從左邊緣30px內開始、且橫向大於縱向才啟動
-        if (!isSwiping.current && swipeStartX.current < 30 && dx > 10 && dx > dy) {
-          isSwiping.current = true;
-        }
-        if (isSwiping.current && dx > 0) {
-          setSwipeDelta(dx);
-        }
-      }}
-      onTouchEnd={e => {
-        const dx = e.changedTouches[0].clientX - swipeStartX.current;
-        if (isSwiping.current && dx > 80) {
-          // 滑夠了，觸發返回
-          setSwipeDelta(0);
-          if (moreSection) setMoreSection(null);
-          else if (walletSubTab !== 'overview') setWalletSubTab('overview');
-          else onBack();
-        } else {
-          // 不夠，彈回來
-          setSwipeDelta(0);
-        }
-        isSwiping.current = false;
-      }}>
+    <div style={{ ...gs.app, maxHeight:'100vh' }}
+>
       {TripHeader()}
       {tab==='itinerary' && ItineraryTab()}
       {tab==='food' && FoodTab()}
