@@ -385,7 +385,8 @@ function TripListScreen({ user, onEnterTrip }) {
 // ─── 建立旅程 Modal ───────────────────────────────────────────
 function CreateTripModal({ user, onClose, onCreated }) {
   const [name, setName] = useState("");
-  const [destination, setDestination] = useState("");
+  const [destinations, setDestinations] = useState([]); // 多個地點
+  const [destInput, setDestInput] = useState("");
   const [emoji, setEmoji] = useState("✈️");
   const [colorIdx, setColorIdx] = useState(0);
   const [startDate, setStartDate] = useState("");
@@ -393,7 +394,6 @@ function CreateTripModal({ user, onClose, onCreated }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // 根據開始/結束日期產生 mm/dd 陣列
   function generateDateList(start, end) {
     if (!start) return ["待安排"];
     const dates = ["待安排"];
@@ -409,6 +409,13 @@ function CreateTripModal({ user, onClose, onCreated }) {
     return dates;
   }
 
+  function addDest() {
+    const v = destInput.trim();
+    if (!v || destinations.includes(v)) return;
+    setDestinations(p => [...p, v]);
+    setDestInput("");
+  }
+
   async function handleCreate() {
     if (!name.trim()) { setError("請輸入旅程名稱"); return; }
     if (startDate && endDate && endDate < startDate) { setError("結束日期不能早於開始日期"); return; }
@@ -417,7 +424,8 @@ function CreateTripModal({ user, onClose, onCreated }) {
       const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       const tripRef = await addDoc(collection(db, "trips"), {
         name: name.trim(),
-        destination: destination.trim(),
+        destinations,
+        destination: destinations[0] || "", // 相容舊欄位
         emoji,
         color: TRIP_COLORS[colorIdx],
         inviteCode,
@@ -433,13 +441,23 @@ function CreateTripModal({ user, onClose, onCreated }) {
         role: "admin",
         joinedAt: serverTimestamp(),
       });
-      // 自動建立行程日期頁籤
       const dates = generateDateList(startDate, endDate);
       await setDoc(doc(db, "tripData", `${tripRef.id}_itinerary`), {
-        items: [],
-        dates,
-        updatedAt: serverTimestamp(),
+        items: [], dates, updatedAt: serverTimestamp(),
       });
+      // 自動建立 foodOptions 以旅程地點作為城市
+      if (destinations.length > 0) {
+        await setDoc(doc(db, "tripData", `${tripRef.id}_foodOptions`), {
+          cities: destinations,
+          districts: {},
+          foodTypes: ["必吃","咖啡甜點","居酒屋","拉麵","燒肉","海鮮","其他"],
+        });
+        await setDoc(doc(db, "tripData", `${tripRef.id}_shopOptions`), {
+          cities: destinations,
+          malls: {},
+          locations: {},
+        });
+      }
       onCreated();
     } catch (e) { setError("建立失敗，請再試一次"); }
     setLoading(false);
@@ -481,8 +499,23 @@ function CreateTripModal({ user, onClose, onCreated }) {
             <input style={gs.input} placeholder="例：東京五天四夜" value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div>
-            <label style={gs.label}>目的地</label>
-            <input style={gs.input} placeholder="例：日本東京" value={destination} onChange={e => setDestination(e.target.value)} />
+            <label style={gs.label}>旅遊地點（可多個）</label>
+            {destinations.length > 0 && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+                {destinations.map(d => (
+                  <div key={d} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 12px", backgroundColor:tripColor+"18", border:`1.5px solid ${tripColor}44`, borderRadius:20 }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:tripColor }}>📍 {d}</span>
+                    <button onClick={() => setDestinations(p=>p.filter(x=>x!==d))}
+                      style={{ background:"none", border:"none", color:tripColor, fontSize:15, cursor:"pointer", lineHeight:1, padding:0, opacity:0.7 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display:"flex", gap:8 }}>
+              <ImeInput key="dest-input" style={{ ...gs.input, flex:1 }} placeholder="例：福岡、大阪" value={destInput} onChange={v=>setDestInput(v)} />
+              <button onClick={addDest}
+                style={{ padding:"12px 16px", border:"none", borderRadius:12, backgroundColor:tripColor, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>＋</button>
+            </div>
           </div>
 
           {/* 日期範圍 */}
@@ -767,23 +800,24 @@ function TripDetailScreen({ user, trip, onBack }) {
   }
   async function loadFoodOptions() {
     try {
+      const tripCities = trip.destinations?.length>0 ? trip.destinations : (trip.destination ? [trip.destination] : []);
       const s = await getDoc(doc(db,"tripData",`${trip.id}_foodOptions`));
-      const defaultCity = trip.destination ? trip.destination.replace(/^.*[都道府県市]/,'').split(' ')[0] || trip.destination : '';
       if (s.exists()) {
         const data = s.data();
-        const cities = data.cities?.length>0 ? data.cities : (defaultCity ? [defaultCity] : []);
         setFoodOptions(prev => ({
-          cities,
+          cities: tripCities, // 城市永遠從旅程地點來
           districts: data.districts || {},
           foodTypes: data.foodTypes?.length>0 ? data.foodTypes : prev.foodTypes,
         }));
-      } else if (defaultCity) {
-        setFoodOptions(prev => ({ ...prev, cities:[defaultCity] }));
+      } else {
+        setFoodOptions(prev => ({ ...prev, cities: tripCities }));
       }
     } catch(e) { console.error(e); }
   }
   async function saveFoodOptions(opts) {
-    await setDoc(doc(db,"tripData",`${trip.id}_foodOptions`), JSON.parse(JSON.stringify(opts)));
+    // 不儲存 cities，城市由旅程地點決定
+    const { cities, ...rest } = opts;
+    await setDoc(doc(db,"tripData",`${trip.id}_foodOptions`), JSON.parse(JSON.stringify(rest)));
   }
   async function loadShopping() {
     const s = await getDoc(doc(db,"tripData",`${trip.id}_shopping`));
@@ -793,11 +827,24 @@ function TripDetailScreen({ user, trip, onBack }) {
     await setDoc(doc(db,"tripData",`${trip.id}_shopping`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
   }
   async function loadShopOptions() {
-    const s = await getDoc(doc(db,"tripData",`${trip.id}_shopOptions`));
-    if (s.exists()) setShopOptions(s.data());
+    try {
+      const tripCities = trip.destinations?.length>0 ? trip.destinations : (trip.destination ? [trip.destination] : []);
+      const s = await getDoc(doc(db,"tripData",`${trip.id}_shopOptions`));
+      if (s.exists()) {
+        const data = s.data();
+        setShopOptions(prev => ({
+          cities: tripCities,
+          malls: data.malls || {},
+          locations: data.locations || {},
+        }));
+      } else {
+        setShopOptions(prev => ({ ...prev, cities: tripCities }));
+      }
+    } catch(e) { console.error(e); }
   }
   async function saveShopOptions(opts) {
-    await setDoc(doc(db,"tripData",`${trip.id}_shopOptions`), JSON.parse(JSON.stringify(opts)));
+    const { cities, ...rest } = opts;
+    await setDoc(doc(db,"tripData",`${trip.id}_shopOptions`), JSON.parse(JSON.stringify(rest)));
   }
   async function loadWallet() {
     const s = await getDoc(doc(db,"tripData",`${trip.id}_wallet`));
@@ -1919,7 +1966,6 @@ function TripDetailScreen({ user, trip, onBack }) {
 
   // 管理美食選項 Modal
   const ManageFoodOptionsModal = () => {
-    const [newCity, setNewCity] = useState('');
     const [newDistrict, setNewDistrict] = useState('');
     const [newDistrictCity, setNewDistrictCity] = useState('');
     const [newFoodType, setNewFoodType] = useState('');
@@ -1937,55 +1983,37 @@ function TripDetailScreen({ user, trip, onBack }) {
             <button onClick={() => setShowManageFoodOptions(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
           </div>
 
-          {/* 城市 */}
-          <div style={{ marginBottom:20 }}>
-            <label style={gs.label}>🏙️ 城市</label>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
-              {cities.map(city => (
-                <div key={city} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#D97706', borderRadius:20 }}>
-                  <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{city}</span>
-                  <button onClick={() => updateOpts({...foodOptions, cities:cities.filter(c=>c!==city), districts:Object.fromEntries(Object.entries(districtsMap).filter(([k])=>k!==city))})}
-                    style={{ background:'none', border:'none', color:'rgba(255,255,255,0.8)', fontSize:16, cursor:'pointer', lineHeight:1, padding:0 }}>×</button>
-                </div>
-              ))}
-            </div>
-            <div style={{ display:'flex', gap:8 }}>
-              <ImeInput key="manage-city" style={{ ...gs.input, flex:1 }} placeholder="新增城市..." value={newCity} onChange={v=>setNewCity(v)} />
-              <button onClick={() => { if(!newCity.trim())return; updateOpts({...foodOptions,cities:[...cities,newCity.trim()]}); setNewCity(''); }}
-                style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#D97706', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
-            </div>
-          </div>
-
-          {/* 地區（直接選城市 + 輸入地區）*/}
+          {/* 地區（依旅程城市）*/}
           <div style={{ marginBottom:20 }}>
             <label style={gs.label}>📍 地區</label>
-            {/* 顯示所有地區 */}
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
-              {cities.map(city => (districtsMap[city]||[]).map(d => (
+              {cities.flatMap(city => (districtsMap[city]||[]).map(d => (
                 <div key={`${city}-${d}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:C.blueSoft, border:`1px solid ${C.blue}33`, borderRadius:20 }}>
-                  <span style={{ fontSize:11, color:C.textMuted, fontWeight:600 }}>{city} · </span>
+                  {cities.length > 1 && <span style={{ fontSize:11, color:C.textMuted, fontWeight:600 }}>{city} · </span>}
                   <span style={{ fontSize:13, fontWeight:700, color:C.blue }}>{d}</span>
                   <button onClick={() => updateOpts({...foodOptions, districts:{...districtsMap,[city]:(districtsMap[city]||[]).filter(x=>x!==d)}})}
                     style={{ background:'none', border:'none', color:C.blue, fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
                 </div>
               )))}
+              {cities.flatMap(c=>(districtsMap[c]||[])).length===0 && <div style={{ fontSize:12, color:C.textMuted }}>尚未新增地區</div>}
             </div>
-            <div style={{ display:'flex', gap:8, marginBottom:8 }}>
-              <select value={newDistrictCity} onChange={e=>setNewDistrictCity(e.target.value)}
-                style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px' }}>
-                <option value="">選城市</option>
-                {cities.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-              <ImeInput key="manage-district" style={{ ...gs.input, flex:1 }} placeholder="新增地區..." value={newDistrict} onChange={v=>setNewDistrict(v)} />
+            <div style={{ display:'flex', gap:8 }}>
+              {cities.length > 1 && (
+                <select value={newDistrictCity} onChange={e=>setNewDistrictCity(e.target.value)}
+                  style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px', fontSize:14 }}>
+                  <option value="">選城市</option>
+                  {cities.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              <ImeInput key="manage-food-district" style={{ ...gs.input, flex:1 }} placeholder="新增地區..." value={newDistrict} onChange={v=>setNewDistrict(v)} />
               <button onClick={() => {
                 if(!newDistrict.trim()) return;
-                const city = newDistrictCity || cities[0];
+                const city = cities.length===1 ? cities[0] : (newDistrictCity || cities[0]);
                 if(!city) return;
                 updateOpts({...foodOptions, districts:{...districtsMap,[city]:[...(districtsMap[city]||[]),newDistrict.trim()]}});
                 setNewDistrict('');
               }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:C.blue, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
-            {cities.length===0 && <div style={{ fontSize:11, color:C.textMuted }}>請先新增城市</div>}
           </div>
 
           {/* 食物種類 */}
@@ -2001,7 +2029,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               ))}
             </div>
             <div style={{ display:'flex', gap:8 }}>
-              <ImeInput key="manage-foodtype" style={{ ...gs.input, flex:1 }} placeholder="新增食物種類..." value={newFoodType} onChange={v=>setNewFoodType(v)} />
+              <ImeInput key="manage-food-type" style={{ ...gs.input, flex:1 }} placeholder="新增食物種類..." value={newFoodType} onChange={v=>setNewFoodType(v)} />
               <button onClick={() => { if(!newFoodType.trim())return; updateOpts({...foodOptions,foodTypes:[...foodTypes,newFoodType.trim()]}); setNewFoodType(''); }}
                 style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:C.green, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
@@ -2046,7 +2074,6 @@ function TripDetailScreen({ user, trip, onBack }) {
 
   // 管理購物選項 Modal
   const ManageShopOptionsModal = () => {
-    const [newCity, setNewCity] = useState('');
     const [newMall, setNewMall] = useState('');
     const [newMallCity, setNewMallCity] = useState('');
     if (!showManageShopOptions) return null;
@@ -2062,54 +2089,37 @@ function TripDetailScreen({ user, trip, onBack }) {
             <button onClick={() => setShowManageShopOptions(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
           </div>
 
-          {/* 城市 */}
+          {/* 商場（依旅程城市）*/}
           <div style={{ marginBottom:20 }}>
-            <label style={gs.label}>🏙️ 城市</label>
+            <label style={gs.label}>🏪 商場 / 百貨</label>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
-              {cities.map(city => (
-                <div key={city} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#BE185D', borderRadius:20 }}>
-                  <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{city}</span>
-                  <button onClick={() => updateOpts({...shopOptions, cities:cities.filter(c=>c!==city), malls:Object.fromEntries(Object.entries(mallsMap).filter(([k])=>k!==city))})}
-                    style={{ background:'none', border:'none', color:'rgba(255,255,255,0.8)', fontSize:16, cursor:'pointer', lineHeight:1, padding:0 }}>×</button>
-                </div>
-              ))}
-            </div>
-            <div style={{ display:'flex', gap:8 }}>
-              <ImeInput key="shop-manage-city" style={{ ...gs.input, flex:1 }} placeholder="新增城市..." value={newCity} onChange={v=>setNewCity(v)} />
-              <button onClick={() => { if(!newCity.trim())return; updateOpts({...shopOptions,cities:[...cities,newCity.trim()]}); setNewCity(''); }}
-                style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
-            </div>
-          </div>
-
-          {/* 商場（直接選城市 + 輸入商場）*/}
-          <div style={{ marginBottom:20 }}>
-            <label style={gs.label}>🏪 商場</label>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
-              {cities.map(city => (mallsMap[city]||[]).map(m => (
+              {cities.flatMap(city => (mallsMap[city]||[]).map(m => (
                 <div key={`${city}-${m}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#FDE8F3', border:'1px solid #F9B8DA', borderRadius:20 }}>
-                  <span style={{ fontSize:11, color:'#BE185D', fontWeight:600, opacity:0.7 }}>{city} · </span>
+                  {cities.length > 1 && <span style={{ fontSize:11, color:'#BE185D', fontWeight:600, opacity:0.7 }}>{city} · </span>}
                   <span style={{ fontSize:13, fontWeight:700, color:'#BE185D' }}>{m}</span>
                   <button onClick={() => updateOpts({...shopOptions, malls:{...mallsMap,[city]:(mallsMap[city]||[]).filter(x=>x!==m)}})}
                     style={{ background:'none', border:'none', color:'#BE185D', fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
                 </div>
               )))}
+              {cities.flatMap(c=>(mallsMap[c]||[])).length===0 && <div style={{ fontSize:12, color:C.textMuted }}>尚未新增商場</div>}
             </div>
             <div style={{ display:'flex', gap:8 }}>
-              <select value={newMallCity} onChange={e=>setNewMallCity(e.target.value)}
-                style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px' }}>
-                <option value="">選城市</option>
-                {cities.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-              <ImeInput key="shop-manage-mall" style={{ ...gs.input, flex:1 }} placeholder="新增商場..." value={newMall} onChange={v=>setNewMall(v)} />
+              {cities.length > 1 && (
+                <select value={newMallCity} onChange={e=>setNewMallCity(e.target.value)}
+                  style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px', fontSize:14 }}>
+                  <option value="">選城市</option>
+                  {cities.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              <ImeInput key="manage-shop-mall" style={{ ...gs.input, flex:1 }} placeholder="例：天神地下街、博多マルイ" value={newMall} onChange={v=>setNewMall(v)} />
               <button onClick={() => {
                 if(!newMall.trim()) return;
-                const city = newMallCity || cities[0];
+                const city = cities.length===1 ? cities[0] : (newMallCity || cities[0]);
                 if(!city) return;
                 updateOpts({...shopOptions, malls:{...mallsMap,[city]:[...(mallsMap[city]||[]),newMall.trim()]}});
                 setNewMall('');
               }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
-            {cities.length===0 && <div style={{ fontSize:11, color:C.textMuted }}>請先新增城市</div>}
           </div>
 
           <button onClick={() => setShowManageShopOptions(false)}
