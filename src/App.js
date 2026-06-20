@@ -293,10 +293,10 @@ function TripListScreen({ user, onEnterTrip }) {
     try {
       // 刪除所有成員
       const mSnap = await getDocs(query(collection(db, "tripMembers"), where("tripId", "==", trip.id)));
-      for (const d of mSnap.docs) { try { await deleteDoc(d.ref); } catch(e) {} }
+      await Promise.all(mSnap.docs.map(d => deleteDoc(d.ref).catch(()=>{})));
       // 刪除旅程資料（部分可能不存在，忽略錯誤）
       const dataKeys = ['itinerary','food','foodOptions','shopping','shopOptions','wallet','todos','notes','splitRecords','currencies'];
-      for (const k of dataKeys) { try { await deleteDoc(doc(db, "tripData", `${trip.id}_${k}`)); } catch(e) {} }
+      await Promise.all(dataKeys.map(k => deleteDoc(doc(db, "tripData", `${trip.id}_${k}`)).catch(()=>{})));
       // 刪除旅程本體
       await deleteDoc(doc(db, "trips", trip.id));
       setTrips(p => p.filter(t => t.id !== trip.id));
