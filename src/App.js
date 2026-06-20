@@ -203,7 +203,7 @@ function AuthScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label style={gs.label}>你的名稱</label>
-              <input style={gs.input} placeholder="輸入暱稱" value={name} onChange={e=>setName(e.target.value)} />
+              <ImeInput style={gs.input} placeholder="輸入暱稱" value={name} onChange={v=>setName(v)} />
             </div>
             <div>
               <label style={gs.label}>Email</label>
@@ -581,6 +581,41 @@ function JoinTripModal({ user, onClose, onJoined }) {
 
 // ─── 旅程內頁 ─────────────────────────────────────────────────
 // ─── 確認刪除 Dialog ──────────────────────────────────────────
+// ImeInput：解決 iOS 注音輸入消失問題
+function ImeInput({ value, onChange, style, placeholder, type, autoComplete, multiline, rows }) {
+  const ref = React.useRef(null);
+  const composing = React.useRef(false);
+  const prevValue = React.useRef(value);
+
+  React.useEffect(() => {
+    if (!ref.current) return;
+    if (composing.current) return;
+    if (ref.current.value !== (value || '')) {
+      ref.current.value = value || '';
+    }
+    prevValue.current = value;
+  }, [value]);
+
+  const handlers = {
+    ref,
+    defaultValue: value || '',
+    placeholder,
+    style,
+    autoComplete: autoComplete || 'off',
+    onCompositionStart: () => { composing.current = true; },
+    onCompositionEnd: (e) => {
+      composing.current = false;
+      onChange(e.target.value);
+    },
+    onChange: (e) => {
+      if (!composing.current) onChange(e.target.value);
+    },
+  };
+
+  if (multiline) return <textarea {...handlers} rows={rows || 3} />;
+  return <input type={type || 'text'} {...handlers} />;
+}
+
 function ConfirmDialog({ isOpen, onClose, onConfirm, title, message }) {
   if (!isOpen) return null;
   return (
@@ -946,7 +981,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                         <button onClick={() => { setModal({open:true,data:item}); setTempPhotos(item.photos||[]); }} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => setConfirmDel({title:'確認刪除',message:'確定刪除這個行程項目嗎？',fn:()=>handleDeleteItem(item.id)})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
+                        <button onClick={() => setConfirmDel({title:'確認刪除',message:'確定刪除這個行程項目嗎？',fn:()=>handleDeleteItem(item.id)})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>×</button>
                       </div>
                     </div>
                     <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{item.name}</div>
@@ -1066,7 +1101,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                         <button onClick={() => setFoodModal({open:true,data:{...item}})} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => setConfirmDel({title:'刪除美食',message:`確定刪除「${item.name}」？`,fn:()=>{const n=foodItems.filter(i=>i.id!==item.id);setFoodItems(n);saveFood(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
+                        <button onClick={() => setConfirmDel({title:'刪除美食',message:`確定刪除「${item.name}」？`,fn:()=>{const n=foodItems.filter(i=>i.id!==item.id);setFoodItems(n);saveFood(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>×</button>
                       </div>
                     </div>
                     <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{item.name}</div>
@@ -1336,7 +1371,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         <div style={{ fontSize:20, fontWeight:800, color:isIncome?(CurrencyC[cur]||C.green):C.purple }}>{isIncome?'+':'-'}{SYM[cur]||''}{Number(item.amount||0).toLocaleString()}</div>
                         <div style={{ display:'flex', gap:4, marginTop:6, justifyContent:'flex-end' }}>
                           <button onClick={()=>{setWalletModal({open:true,data:{...item,contributorIds:item.contributorIds||allUids,forMemberIds:item.forMemberIds||allUids}});setWalletCalc(false);}} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
-                          <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>setActiveItems(p=>p.filter(i=>i.id!==item.id))})} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>🗑</button>
+                          <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>setActiveItems(p=>p.filter(i=>i.id!==item.id))})} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                         </div>
                       </div>
                     </div>
@@ -1492,7 +1527,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                     {isMine && (
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                         <button onClick={() => setShoppingModal({open:true,data:item})} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => setConfirmDel({title:'刪除',message:`確定刪除「${item.name}」？`,fn:()=>{const n=shoppingItems.filter(i=>i.id!==item.id);setShoppingItems(n);saveShopping(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
+                        <button onClick={() => setConfirmDel({title:'刪除',message:`確定刪除「${item.name}」？`,fn:()=>{const n=shoppingItems.filter(i=>i.id!==item.id);setShoppingItems(n);saveShopping(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>×</button>
                       </div>
                     )}
                   </div>
@@ -1552,7 +1587,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                       <div style={{ display:'flex', gap:6 }}>
                         <button onClick={() => setTodoModal({open:true,data:todo})} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => { const n=sharedTodos.filter(t=>t.id!==todo.id); setSharedTodos(n);saveTodos(n); }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:11, cursor:'pointer' }}>🗑</button>
+                        <button onClick={() => { const n=sharedTodos.filter(t=>t.id!==todo.id); setSharedTodos(n);saveTodos(n); }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                       </div>
                     </div>
                   </div>
@@ -1580,7 +1615,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                   <div key={note.id} style={{ ...gs.card, padding:'16px' }}>
                     <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginBottom:8 }}>
                       <button onClick={() => { setNoteModal({open:true,data:note}); setNotePhoto(note.photo||null); }} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                      <button onClick={() => { const n=sharedNotes.filter(x=>x.id!==note.id); setSharedNotes(n);saveNotes(n); }} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
+                      <button onClick={() => { const n=sharedNotes.filter(x=>x.id!==note.id); setSharedNotes(n);saveNotes(n); }} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>×</button>
                     </div>
                     {note.photo && <img src={note.photo} style={{ width:'100%', height:160, objectFit:'cover', borderRadius:12, marginBottom:10 }} alt="note" />}
                     {note.content && <div style={{ fontSize:14, color:C.text, whiteSpace:'pre-wrap', lineHeight:1.7, marginBottom:10 }}>{note.content}</div>}
@@ -1693,10 +1728,10 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div><label style={gs.label}>時間</label><input type="time" value={modal.data?.time||''} onChange={e=>setModal(p=>({...p,data:{...p.data,time:e.target.value}}))} style={gs.input} /></div>
         </div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>類別</label><select value={modal.data?.category||'景點'} onChange={e=>setModal(p=>({...p,data:{...p.data,category:e.target.value}}))} style={{ ...gs.input, cursor:'pointer' }}>{['景點','美食','購物','交通','住宿','其他'].map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><input style={gs.input} placeholder="例：逛淺草寺" autoComplete="off" value={modal.data?.name||''} onChange={e=>{const v=e.target.value; setModal(p=>({...p,data:{...p.data,name:v}}))}} /></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>📍 地點</label><input style={gs.input} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={e=>setModal(p=>({...p,data:{...p.data,location:e.target.value}}))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput style={gs.input} placeholder="例：逛淺草寺" value={modal.data?.name||''} onChange={v=>setModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>📍 地點</label><ImeInput style={gs.input} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={v=>setModal(p=>({...p,data:{...p.data,location:v}}))} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={modal.data?.mapUrl||''} onChange={e=>setModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>備註</label><textarea value={modal.data?.note||''} onChange={e=>setModal(p=>({...p,data:{...p.data,note:e.target.value}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>備註</label><ImeInput multiline value={modal.data?.note||''} onChange={v=>setModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <div style={{ marginBottom:16 }}><label style={gs.label}>相片（最多5張）</label>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             {tempPhotos.map((url,i) => (
@@ -1751,7 +1786,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {/* 店名 */}
           <div style={{ marginBottom:14 }}>
             <label style={gs.label}>店家名稱 *</label>
-            <input style={gs.input} autoComplete="off" placeholder="例：一蘭拉麵" value={d.name||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,name:e.target.value}}))} />
+            <ImeInput style={gs.input} placeholder="例：一蘭拉麵" value={d.name||''} onChange={v=>setFoodModal(p=>({...p,data:{...p.data,name:v}}))} />
           </div>
 
           {/* 城市 */}
@@ -1830,7 +1865,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {/* 備註 */}
           <div style={{ marginBottom:18 }}>
             <label style={gs.label}>備註（選填）</label>
-            <textarea value={d.note||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,note:e.target.value}}))} placeholder="必點菜色、注意事項..." rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} />
+            <ImeInput multiline value={d.note||''} onChange={v=>setFoodModal(p=>({...p,data:{...p.data,note:v}}))} placeholder="必點菜色、注意事項..." rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} />
           </div>
 
           <button onClick={() => {
@@ -1946,9 +1981,9 @@ function TripDetailScreen({ user, trip, onBack }) {
             {((shopOptions.malls||{})[shoppingModal.data?.city]||[]).map(m=><option key={m} value={m}>{m}</option>)}
           </select>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>🛍️ 商品名稱 *</label><input style={gs.input} placeholder="例：Matin Kim 外套" autoComplete="off" value={shoppingModal.data?.name||''} onChange={e=>{const v=e.target.value; setShoppingModal(p=>({...p,data:{...p.data,name:v}}))}} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>🛍️ 商品名稱 *</label><ImeInput style={gs.input} placeholder="例：Matin Kim 外套" value={shoppingModal.data?.name||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>🌐 地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={shoppingModal.data?.mapUrl||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
-        <div style={{ marginBottom:16 }}><label style={gs.label}>💡 備註</label><textarea value={shoppingModal.data?.note||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,note:e.target.value}}))} rows={2} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:16 }}><label style={gs.label}>💡 備註</label><ImeInput multiline value={shoppingModal.data?.note||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,note:v}}))} rows={2} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => { if(!shoppingModal.data?.name?.trim())return; const fd={...shoppingModal.data,isBought:shoppingModal.data.isBought||false,addedByName:user.displayName||user.email,addedById:user.uid,createdAt:shoppingModal.data.createdAt||Date.now()}; const n=shoppingModal.data.id?shoppingItems.map(i=>i.id===shoppingModal.data.id?fd:i):[...shoppingItems,{...fd,id:Date.now()}]; setShoppingItems(n);saveShopping(n);setShoppingModal({open:false,data:null}); }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff' }}>確認儲存</button>
       </div>
     </div>
@@ -2023,7 +2058,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
 
           {/* 名稱 */}
-          <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><input style={gs.input} placeholder="例：晚餐、計程車" autoComplete="off" value={d.name||''} onChange={e=>{const v=e.target.value; setWalletModal(p=>({...p,data:{...p.data,name:v}}))}} /></div>
+          <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput style={gs.input} placeholder="例：晚餐、計程車" value={d.name||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
 
           {/* 金額 + 計算機 */}
           <div style={{ backgroundColor:C.bg, borderRadius:14, padding:14, marginBottom:12 }}>
@@ -2107,7 +2142,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           )}
 
           <div style={{ marginBottom:12 }}><label style={gs.label}>日期</label><input type="date" style={gs.input} value={d.date||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,date:e.target.value}}))} /></div>
-          <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><input style={gs.input} placeholder="選填" value={d.note||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,note:e.target.value}}))} /></div>
+          <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput style={gs.input} placeholder="選填" value={d.note||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,note:v}}))} /></div>
 
           <button onClick={()=>{
             if(!d.name?.trim()||!d.amount||!d.date)return;
@@ -2192,8 +2227,8 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ fontSize:16, fontWeight:800 }}>{todoModal.data?.id?'編輯':'新增項目'}</div>
           <button onClick={() => setTodoModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>內容 *</label><input style={gs.input} placeholder="輸入待辦事項..." value={todoModal.data?.content||''} onChange={e=>{const v=e.target.value; setTodoModal(p=>({...p,data:{...p.data,content:v}}))}} /></div>
-        <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><textarea value={todoModal.data?.note||''} onChange={e=>setTodoModal(p=>({...p,data:{...p.data,note:e.target.value}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>內容 *</label><ImeInput style={gs.input} placeholder="輸入待辦事項..." value={todoModal.data?.content||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,content:v}}))} /></div>
+        <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput multiline value={todoModal.data?.note||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => {
           if(!todoModal.data?.content?.trim())return;
           const fd={...todoModal.data,status:todoModal.data.status||false,editedByName:user.displayName||user.email,createdAt:todoModal.data.createdAt||Date.now()};
@@ -2222,7 +2257,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <button onClick={() => document.getElementById('note-photo-input').click()} style={{ width:'100%', padding:'10px', border:`1.5px dashed ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:13, cursor:'pointer', fontWeight:600 }}>📷 新增相片</button>
           <input type="file" id="note-photo-input" style={{ display:'none' }} accept="image/*" onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onloadend=()=>{ const img=new Image(); img.src=r.result; img.onload=()=>{ const c=document.createElement('canvas'); let w=img.width,h=img.height,max=800; if(w>h){if(w>max){h=h*max/w;w=max;}}else{if(h>max){w=w*max/h;h=max;}} c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);setNotePhoto(c.toDataURL('image/jpeg',0.7)); }; }; r.readAsDataURL(f); }} />
         </div>
-        <div style={{ marginBottom:16 }}><textarea value={noteModal.data?.content||''} onChange={e=>setNoteModal(p=>({...p,data:{...p.data,content:e.target.value}}))} placeholder="輸入記事內容..." rows={5} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
+        <div style={{ marginBottom:16 }}><ImeInput multiline value={noteModal.data?.content||''} onChange={v=>setNoteModal(p=>({...p,data:{...p.data,content:v}}))} placeholder="輸入記事內容..." rows={5} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => {
           if(!noteModal.data?.content&&!notePhoto)return;
           const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`;
