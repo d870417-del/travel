@@ -1705,12 +1705,14 @@ function TripDetailScreen({ user, trip, onBack }) {
 
     // walletSubTab: 'overview' | 'shared-detail' | 'personal-detail'
     const isShared = walletSubTab==='shared-detail';
+    const isSplit = walletSubTab==='split-detail';
     const activeItems = isShared ? walletItems : personalWalletItems;
     const setActiveItems = (fn) => {
       const next = typeof fn==='function' ? fn(activeItems) : fn;
       if(isShared){ setWalletItems(next); saveWallet(next); }
       else { setPersonalWalletItems(next); savePersonalWallet(next); }
     };
+    // split-detail 頁面早於明細頁 return，不會走到這裡
 
     // 各幣別餘額
     const calcTotals = (items) => items.reduce((acc,i)=>{
@@ -1781,7 +1783,8 @@ function TripDetailScreen({ user, trip, onBack }) {
     // ── 總覽頁 ──
     if(walletSubTab==='overview') return (
       <div style={{ flex:1, overflowY:'auto', padding:16, display:'flex', flexDirection:'column', gap:14 }}>
-        {/* 公費錢包 */}
+
+        {/* 💰 共同公費 */}
         <button onClick={()=>setWalletSubTab('shared-detail')}
           style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.purple}22`, background:C.purpleSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -1800,14 +1803,13 @@ function TripDetailScreen({ user, trip, onBack }) {
               ))}
             </div>
           )}
-          
         </button>
 
-        {/* 個人帳務 */}
+        {/* 👤 個人記帳 */}
         <button onClick={()=>setWalletSubTab('personal-detail')}
           style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.blue}22`, background:C.blueSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>👤 個人帳務</div>
+            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>👤 個人記帳</div>
             <div style={{ fontSize:18, color:C.blue }}>›</div>
           </div>
           {Object.keys(personalTotals).length===0 ? (
@@ -1822,15 +1824,37 @@ function TripDetailScreen({ user, trip, onBack }) {
               ))}
             </div>
           )}
-          {myTransfers.length>0 && (
-            <div style={{ padding:'6px 10px', borderRadius:8, backgroundColor:C.dangerSoft, border:`1px solid ${C.danger}33` }}>
-              <div style={{ fontSize:11, fontWeight:700, color:C.danger }}>⚠️ 有 {myTransfers.length} 筆代墊未結清</div>
-            </div>
-          )}
-          
         </button>
 
-        {/* 匯率資訊 + 設定 */}
+        {/* 🔄 代墊結算 */}
+        <button onClick={()=>setWalletSubTab('split-detail')}
+          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.green}22`, background:C.greenSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ fontSize:15, fontWeight:800, color:C.green }}>🔄 代墊結算</div>
+            <div style={{ fontSize:18, color:C.green }}>›</div>
+          </div>
+          {unsettled.length===0 ? (
+            <div style={{ fontSize:12, color:C.textMuted }}>目前沒有未結清的代墊</div>
+          ) : (
+            <>
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                {Object.entries(unsettled.reduce((acc,r)=>{ acc[r.currency]=(acc[r.currency]||0)+r.amount; return acc; },{})).map(([cur,val])=>(
+                  <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:'#FFF0F0', border:`1px solid ${C.danger}33` }}>
+                    <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
+                    <div style={{ fontSize:15, fontWeight:800, color:C.danger }}>{SYM[cur]||''}{val.toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+              {myTransfers.length>0 && (
+                <div style={{ padding:'6px 10px', borderRadius:8, backgroundColor:C.dangerSoft, border:`1px solid ${C.danger}33` }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.danger }}>⚠️ 有 {myTransfers.length} 筆與我有關</div>
+                </div>
+              )}
+            </>
+          )}
+        </button>
+
+        {/* 匯率設定 */}
         <button onClick={() => setShowCurrencySettings(true)}
           style={{ width:'100%', padding:'10px 14px', borderRadius:12, backgroundColor:C.bg, border:`1px solid ${C.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer', textAlign:'left' }}>
           <div style={{ fontSize:11, color:C.textMuted }}>
@@ -1842,10 +1866,96 @@ function TripDetailScreen({ user, trip, onBack }) {
       </div>
     );
 
+    // ── 代墊結算頁 ──
+    if(walletSubTab==='split-detail') return (
+      <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
+        <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
+          <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
+          <div style={{ fontSize:15, fontWeight:800 }}>🔄 代墊結算</div>
+        </div>
+        <div style={{ padding:16, flex:1 }}>
+          <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>
+            {tripCurrencies.filter(c=>c!=='TWD').map(c=>`1 ${c} ≈ NT${(manualRates[c]||rates[c]||'?')}`).join('・')}
+          </div>
+          {transfers.length===0 ? (
+            <div style={{ textAlign:'center', padding:'60px 20px' }}>
+              <div style={{ fontSize:40, marginBottom:10 }}>🎉</div>
+              <div style={{ fontSize:15, fontWeight:700, color:C.green }}>全部結清了！</div>
+              <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>目前沒有未結清的代墊款項</div>
+            </div>
+          ) : (
+            <>
+              {/* 簡化後轉帳清單 */}
+              <div style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase', marginBottom:10 }}>💸 簡化後轉帳清單</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+                {transfers.map((t,idx)=>(
+                  <ExpandableTransferCard key={idx} t={t} idx={idx}
+                    fromM={members.find(m=>m.uid===t.from)||{displayName:'?',uid:t.from}}
+                    toM={members.find(m=>m.uid===t.to)||{displayName:'?',uid:t.to}}
+                    iAmFrom={t.from===user.uid} iAmTo={t.to===user.uid}
+                    done={(transferStates[t.from+t.to+t.currency]?.paidConfirmed&&transferStates[t.from+t.to+t.currency]?.receivedConfirmed)||false}
+                    unsettled={unsettled} SYM={SYM} toTWD={toTWD} C={C} gs={gs}
+                    transferStates={transferStates} setTransferStates={setTransferStates}
+                    splitRecords={splitRecords} saveSplitRecords={saveSplitRecords} setSplitRecords={setSplitRecords}
+                    user={user} members={members} />
+                ))}
+              </div>
+
+              {/* 我的應收款 */}
+              {transfers.filter(t=>t.to===user.uid).length>0 && (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.green, textTransform:'uppercase', marginBottom:10 }}>💰 我的應收款</div>
+                  {transfers.filter(t=>t.to===user.uid).map((t,idx)=>{
+                    const fromM=members.find(m=>m.uid===t.from)||{displayName:'?'};
+                    const originals=unsettled.filter(r=>r.payerId===user.uid&&r.receiverId===t.from&&r.currency===t.currency);
+                    return (
+                      <div key={idx} style={{ ...gs.card, padding:'14px 16px', backgroundColor:C.greenSoft, border:`1px solid ${C.green}22`, marginBottom:10 }}>
+                        <div style={{ fontSize:14, fontWeight:700, marginBottom:8, color:C.green }}>{fromM.displayName} 要還我</div>
+                        {originals.map((r,ri)=>(
+                          <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderTop:ri>0?`1px solid ${C.border}`:'none' }}>
+                            <div style={{ width:6, height:6, borderRadius:'50%', backgroundColor:C.green, flexShrink:0 }} />
+                            <div style={{ flex:1, fontSize:12, fontWeight:600 }}>{r.note||'代墊'}</div>
+                            <div style={{ fontSize:13, fontWeight:800, color:C.green }}>{SYM[r.currency]||''}{r.amount.toLocaleString()} {r.currency}</div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 我的應付款 */}
+              {transfers.filter(t=>t.from===user.uid).length>0 && (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.danger, textTransform:'uppercase', marginBottom:10 }}>💸 我的應付款</div>
+                  {transfers.filter(t=>t.from===user.uid).map((t,idx)=>{
+                    const toM=members.find(m=>m.uid===t.to)||{displayName:'?'};
+                    const originals=unsettled.filter(r=>r.payerId===t.to&&r.receiverId===user.uid&&r.currency===t.currency);
+                    return (
+                      <div key={idx} style={{ ...gs.card, padding:'14px 16px', backgroundColor:C.dangerSoft, border:`1px solid ${C.danger}22`, marginBottom:10 }}>
+                        <div style={{ fontSize:14, fontWeight:700, marginBottom:8, color:C.danger }}>我要還 {toM.displayName}</div>
+                        {originals.map((r,ri)=>(
+                          <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderTop:ri>0?`1px solid ${C.border}`:'none' }}>
+                            <div style={{ width:6, height:6, borderRadius:'50%', backgroundColor:C.danger, flexShrink:0 }} />
+                            <div style={{ flex:1, fontSize:12, fontWeight:600 }}>{r.note||'代墊'}</div>
+                            <div style={{ fontSize:13, fontWeight:800, color:C.danger }}>{SYM[r.currency]||''}{r.amount.toLocaleString()} {r.currency}</div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+
     // ── 明細頁（共用或個人）──
     const pageColor = isShared ? C.purple : C.blue;
     const pageBg = isShared ? C.purpleSoft : C.blueSoft;
-    const pageTitle = isShared ? '共同公費' : '個人帳務';
+    const pageTitle = isShared ? '共同公費' : '個人記帳';
 
     return (
       <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
@@ -1872,11 +1982,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               <span>📊 公費結算 — 查看每人貢獻</span><span>›</span>
             </button>
           )}
-          {!isShared && myTransfers.length>0 && (
-            <button onClick={()=>setShowPersonalSettlement(true)} style={{ width:'100%', padding:'9px 14px', borderRadius:12, border:`1px solid ${C.danger}33`, backgroundColor:'rgba(255,255,255,0.6)', color:C.danger, fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span>⚠️ {myTransfers.length} 筆代墊未結清</span><span>›</span>
-            </button>
-          )}
+
         </div>
 
         {/* 日期列 */}
@@ -1917,7 +2023,15 @@ function TripDetailScreen({ user, trip, onBack }) {
                   if(isIncome){ const ids=item.contributorIds; if(ids&&ids.length>0&&ids.length<allUids.length){ const names=ids.map(id=>members.find(m=>m.uid===id)?.displayName).filter(Boolean); memberLabel=names.join('・')+' 存入'; }}
                   else { const ids=item.forMemberIds; if(ids&&ids.length>0&&ids.length<allUids.length){ const names=ids.map(id=>members.find(m=>m.uid===id)?.displayName).filter(Boolean); memberLabel='幫 '+names.join('・')+' 代墊'; }}
                 } else {
-                  if(item.splitPayerId){ const payer=members.find(m=>m.uid===item.splitPayerId)?.displayName||'?'; const receivers=(item.splitReceiverIds||[]).map(id=>members.find(m=>m.uid===id)?.displayName).filter(Boolean); memberLabel=`${payer} 代墊 → ${receivers.join('・')}`; }
+                  if(item.splitPayerId){
+                    const payer=members.find(m=>m.uid===item.splitPayerId)?.displayName||'?';
+                    const receivers=(item.splitReceiverIds||[]).map(id=>members.find(m=>m.uid===id)?.displayName).filter(Boolean);
+                    const total=Number(item.amount)||0;
+                    const n=(item.splitReceiverIds||[]).length||1;
+                    const per=Math.floor(total/n);
+                    const rem=total-per*n;
+                    memberLabel=`${payer} 代墊・每人 ${per.toLocaleString()}${rem>0?'+':''}`;
+                  }
                 }
                 const bg = isIncome?(CurrencyBg[cur]||C.greenSoft):'#F8F6FF';
                 const bc = isIncome?(CurrencyC[cur]||C.green)+'22':'#C4B0FF44';
@@ -1939,7 +2053,18 @@ function TripDetailScreen({ user, trip, onBack }) {
                         <div style={{ fontSize:20, fontWeight:800, color:isIncome?(CurrencyC[cur]||C.green):C.purple }}>{isIncome?'+':'-'}{SYM[cur]||''}{Number(item.amount||0).toLocaleString()}</div>
                         <div style={{ display:'flex', gap:4, marginTop:6, justifyContent:'flex-end' }}>
                           <button onClick={()=>{setWalletModal({open:true,data:{...item,contributorIds:item.contributorIds||allUids,forMemberIds:item.forMemberIds||allUids}});setWalletCalc(false);}} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
-                          <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>setActiveItems(p=>p.filter(i=>i.id!==item.id))})} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
+                          <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>{
+                            setActiveItems(p=>p.filter(i=>i.id!==item.id));
+                            // 刪除相關的 splitRecords（用 walletItemId 或 createdAt 對應）
+                            if (!isShared) {
+                              const newRecords = splitRecords.filter(r=>
+                                r.walletItemId !== item.id && r.createdAt !== item.createdAt
+                              );
+                              if(newRecords.length !== splitRecords.length) {
+                                setSplitRecords(newRecords); saveSplitRecords(newRecords);
+                              }
+                            }
+                          }})} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                         </div>
                       </div>
                     </div>
@@ -1951,7 +2076,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
 
         {/* 新增按鈕 */}
-        <button onClick={()=>{ const allUids=members.map(m=>m.uid); setWalletModal({open:true,data:{type:'支出',currency:'JPY',contributorIds:allUids,forMemberIds:allUids,paidById:user.uid,splitPayerId:null,splitReceiverIds:[]}}); setWalletCalc(false); }}
+        <button onClick={()=>{ const allUids=members.map(m=>m.uid); const defaultCur=(tripCurrencies||['JPY'])[0]||'JPY'; setWalletModal({open:true,data:{type:'支出',currency:defaultCur,contributorIds:allUids,forMemberIds:allUids,paidById:user.uid,splitPayerId:null,splitReceiverIds:[]}}); setWalletCalc(false); }}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${pageColor},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${pageColor}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
 
         {/* ── 公費結算 Modal ── */}
@@ -2009,96 +2134,6 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
         )}
 
-        {/* ── 代墊結算 Modal ── */}
-        {showPersonalSettlement&&(
-          <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:400 }}>
-            <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'90vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                <div style={{ fontSize:16, fontWeight:800 }}>代墊結算</div>
-                <button onClick={()=>setShowPersonalSettlement(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
-              </div>
-              <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>
-                {tripCurrencies.filter(c=>c!=='TWD').map(c=>`1 ${c} ≈ NT${(manualRates[c]||rates[c]||'?')}`).join('・')}・{ratesUpdatedAt}
-              </div>
-
-              {transfers.length===0 ? (
-                <div style={{ textAlign:'center', padding:'40px 20px' }}>
-                  <div style={{ fontSize:36, marginBottom:10 }}>🎉</div>
-                  <div style={{ fontSize:15, fontWeight:700, color:C.green }}>全部結清了！</div>
-                </div>
-              ) : (
-                <>
-                  {/* 上方：簡化後的最終轉帳清單 */}
-                  <div style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase', marginBottom:10 }}>💸 簡化後轉帳清單</div>
-                  <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
-                    {transfers.map((t,idx)=>(
-                      <ExpandableTransferCard key={idx} t={t} idx={idx}
-                        fromM={members.find(m=>m.uid===t.from)||{displayName:'?',uid:t.from}}
-                        toM={members.find(m=>m.uid===t.to)||{displayName:'?',uid:t.to}}
-                        iAmFrom={t.from===user.uid} iAmTo={t.to===user.uid}
-                        done={(transferStates[t.from+t.to+t.currency]?.paidConfirmed&&transferStates[t.from+t.to+t.currency]?.receivedConfirmed)||false}
-                        unsettled={unsettled} SYM={SYM} toTWD={toTWD} C={C} gs={gs}
-                        transferStates={transferStates} setTransferStates={setTransferStates}
-                        splitRecords={splitRecords} saveSplitRecords={saveSplitRecords} setSplitRecords={setSplitRecords}
-                        user={user} members={members} />
-                    ))}
-                  </div>
-
-                  {/* 下方：我的應收款 */}
-                  {transfers.filter(t=>t.to===user.uid).length>0 && (
-                    <div style={{ marginBottom:16 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:C.green, textTransform:'uppercase', marginBottom:10 }}>💰 我的應收款</div>
-                      {transfers.filter(t=>t.to===user.uid).map((t,idx)=>{
-                        const fromM=members.find(m=>m.uid===t.from)||{displayName:'?'};
-                        // 找每筆原始代墊
-                        const originals=unsettled.filter(r=>r.payerId===user.uid&&r.receiverId===t.from&&r.currency===t.currency);
-                        return (
-                          <div key={idx} style={{ ...gs.card, padding:'14px 16px', backgroundColor:C.greenSoft, border:`1px solid ${C.green}22`, marginBottom:10 }}>
-                            <div style={{ fontSize:14, fontWeight:700, marginBottom:8 }}>{fromM.displayName} 要還我</div>
-                            {originals.map((r,ri)=>(
-                              <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderTop:ri>0?`1px solid ${C.border}`:'none' }}>
-                                <div style={{ width:6, height:6, borderRadius:'50%', backgroundColor:C.green, flexShrink:0 }} />
-                                <div style={{ flex:1 }}>
-                                  <div style={{ fontSize:12, fontWeight:600 }}>{r.note||'代墊'}</div>
-                                </div>
-                                <div style={{ fontSize:13, fontWeight:800, color:C.green }}>{SYM[r.currency]||''}{r.amount.toLocaleString()} {r.currency}</div>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* 下方：我的應付款 */}
-                  {transfers.filter(t=>t.from===user.uid).length>0 && (
-                    <div style={{ marginBottom:16 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:C.danger, textTransform:'uppercase', marginBottom:10 }}>💸 我的應付款</div>
-                      {transfers.filter(t=>t.from===user.uid).map((t,idx)=>{
-                        const toM=members.find(m=>m.uid===t.to)||{displayName:'?'};
-                        const originals=unsettled.filter(r=>r.payerId===t.to&&r.receiverId===user.uid&&r.currency===t.currency);
-                        return (
-                          <div key={idx} style={{ ...gs.card, padding:'14px 16px', backgroundColor:C.dangerSoft, border:`1px solid ${C.danger}22`, marginBottom:10 }}>
-                            <div style={{ fontSize:14, fontWeight:700, marginBottom:8 }}>我要還 {toM.displayName}</div>
-                            {originals.map((r,ri)=>(
-                              <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderTop:ri>0?`1px solid ${C.border}`:'none' }}>
-                                <div style={{ width:6, height:6, borderRadius:'50%', backgroundColor:C.danger, flexShrink:0 }} />
-                                <div style={{ flex:1 }}>
-                                  <div style={{ fontSize:12, fontWeight:600 }}>{r.note||'代墊'}</div>
-                                </div>
-                                <div style={{ fontSize:13, fontWeight:800, color:C.danger }}>{SYM[r.currency]||''}{r.amount.toLocaleString()} {r.currency}</div>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-              <button onClick={()=>setShowPersonalSettlement(false)} style={{ width:'100%', padding:13, border:`1px solid ${C.border}`, borderRadius:12, fontSize:14, fontWeight:700, cursor:'pointer', backgroundColor:C.bg, color:C.text }}>關閉</button>
-            </div>
-          </div>
         )}
 
       </div>
@@ -2981,6 +3016,13 @@ function TripDetailScreen({ user, trip, onBack }) {
     const d = walletModal.data || {};
     const contributorIds = d.contributorIds || allUids;
     const forMemberIds = d.forMemberIds || allUids;
+    const availCurrencies = tripCurrencies.length>0 ? tripCurrencies : ['JPY','KRW','TWD','USD'];
+
+    const perHint = (amount, ids) => {
+      const t=Number(amount)||0; const n=ids.length||1;
+      const per=Math.floor(t/n); const rem=t-per*n;
+      return `每人 ${per.toLocaleString()}${rem>0?`（${rem} 人多付 1）`:''} ${d.currency||'JPY'}`;
+    };
 
     return (
       <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
@@ -2988,6 +3030,12 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
             <div style={{ fontSize:16, fontWeight:800 }}>{d.id?'編輯帳目':'新增帳目'}</div>
             <button onClick={()=>{setWalletModal({open:false,data:null});setWalletCalc(false);}} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
+          </div>
+
+          {/* 項目名稱 */}
+          <div style={{ marginBottom:14 }}>
+            <label style={gs.label}>項目名稱</label>
+            <ImeInput key="wallet-name" style={gs.input} placeholder="例：晚餐、計程車" value={d.name||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,name:v}}))} />
           </div>
 
           {/* 存入/支出 */}
@@ -2998,80 +3046,79 @@ function TripDetailScreen({ user, trip, onBack }) {
             ))}
           </div>
 
-          {/* 名稱 */}
-          <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput key="wallet-name" style={gs.input} placeholder="例：晚餐、計程車" value={d.name||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
-
           {/* 金額 + 計算機 */}
-          <div style={{ backgroundColor:C.bg, borderRadius:14, padding:14, marginBottom:12 }}>
+          <div style={{ backgroundColor:C.bg, borderRadius:14, padding:14, marginBottom:14 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>金額</div>
-                <input type="text" value={d.amount||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,amount:e.target.value}}))} placeholder="0" style={{ fontSize:28, fontWeight:800, color:C.text, background:'none', border:'none', outline:'none', width:'100%' }} />
+                <input type="number" value={d.amount||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,amount:e.target.value}}))}
+                  placeholder="0" style={{ fontSize:28, fontWeight:800, color:C.text, background:'none', border:'none', outline:'none', width:'100%' }} />
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:8, alignItems:'flex-end' }}>
                 <button onClick={()=>setWalletCalc(v=>!v)} style={{ padding:'6px 10px', borderRadius:10, border:`1px solid ${walletCalc?pageColor:C.border}`, backgroundColor:walletCalc?(isShared?C.purpleSoft:C.blueSoft):C.bg, color:walletCalc?pageColor:C.textMuted, fontSize:18, cursor:'pointer' }}>🔢</button>
-                <select value={d.currency||'JPY'} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,currency:e.target.value}}))} style={{ padding:'5px 8px', borderRadius:8, border:`1px solid ${C.border}`, backgroundColor:C.bg, fontSize:13, fontWeight:700, color:pageColor, cursor:'pointer', outline:'none' }}>
-                  {['JPY','KRW','TWD','USD'].map(c=><option key={c} value={c}>{c}</option>)}
+                <select value={d.currency||availCurrencies[0]||'JPY'} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,currency:e.target.value}}))}
+                  style={{ padding:'5px 8px', borderRadius:8, border:`1px solid ${C.border}`, backgroundColor:C.bg, fontSize:13, fontWeight:700, color:pageColor, cursor:'pointer', outline:'none' }}>
+                  {availCurrencies.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
             </div>
           </div>
           {walletCalc&&(
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:12 }}>
-              {[1,2,3,4,5,6,7,8,9,'.',0].map(n=>(
-                <button key={n} onClick={()=>setWalletModal(p=>({...p,data:{...p.data,amount:(p.data?.amount||'')+n.toString()}}))} style={{ padding:12, borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.surface, fontSize:16, fontWeight:700, cursor:'pointer' }}>{n}</button>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:14 }}>
+              {[1,2,3,4,5,6,7,8,9,'.',0,'⌫'].map(n=>(
+                <button key={n} onClick={()=>{
+                  if(n==='⌫') setWalletModal(p=>({...p,data:{...p.data,amount:String(p.data?.amount||'').slice(0,-1)}}));
+                  else setWalletModal(p=>({...p,data:{...p.data,amount:(p.data?.amount||'')+n.toString()}}));
+                }} style={{ padding:12, borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:n==='⌫'?C.bg:C.surface, fontSize:16, fontWeight:700, cursor:'pointer' }}>{n}</button>
               ))}
-              <button onClick={()=>setWalletModal(p=>({...p,data:{...p.data,amount:String(p.data?.amount||'').slice(0,-1)}}))} style={{ padding:12, borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.bg, fontSize:16, cursor:'pointer' }}>⌫</button>
             </div>
           )}
 
           {/* 共用公費：存入選人 / 支出選分攤對象 */}
           {isShared && d.type==='存入' && (
-            <div style={{ marginBottom:12, backgroundColor:C.greenSoft, borderRadius:12, padding:'12px 14px', border:`1px solid ${C.green}22` }}>
+            <div style={{ marginBottom:14, backgroundColor:C.greenSoft, borderRadius:12, padding:'12px 14px', border:`1px solid ${C.green}22` }}>
               <label style={{ ...gs.label, color:C.green }}>誰存入（預設全員）</label>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
                 {members.map(m=>{ const sel=contributorIds.includes(m.uid); return (
-                  <button key={m.uid} type="button" onClick={()=>{ const cur=contributorIds; const next=sel?cur.filter(x=>x!==m.uid):[...cur,m.uid]; if(next.length===0)return; setWalletModal(p=>({...p,data:{...p.data,contributorIds:next}})); }}
+                  <button key={m.uid} type="button" onClick={()=>{ const next=sel?contributorIds.filter(x=>x!==m.uid):[...contributorIds,m.uid]; if(next.length===0)return; setWalletModal(p=>({...p,data:{...p.data,contributorIds:next}})); }}
                     style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${sel?C.green:C.border}`, backgroundColor:sel?C.green:'transparent', color:sel?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                     {m.uid===user.uid?`${m.displayName}（我）`:m.displayName}
                   </button>
                 );})}
               </div>
-              {contributorIds.length>1&&d.amount&&(()=>{
-  const t=Number(d.amount); const n=contributorIds.length;
-  const per=Math.floor(t/n); const rem=t-per*n;
-  return <div style={{ fontSize:11, color:C.green, fontWeight:700, marginTop:6 }}>每人 {per.toLocaleString()}{rem>0?` 元（${rem} 人多付 1）`:' 元'} {d.currency||'JPY'}</div>;
-})()}
+              {contributorIds.length>1&&d.amount&&<div style={{ fontSize:11, color:C.green, fontWeight:700, marginTop:6 }}>{perHint(d.amount,contributorIds)}</div>}
             </div>
           )}
           {isShared && d.type==='支出' && (
-            <div style={{ marginBottom:12, backgroundColor:C.purpleSoft, borderRadius:12, padding:'12px 14px', border:`1px solid ${C.purple}22` }}>
+            <div style={{ marginBottom:14, backgroundColor:C.purpleSoft, borderRadius:12, padding:'12px 14px', border:`1px solid ${C.purple}22` }}>
               <label style={{ ...gs.label, color:C.purple }}>幫誰支出（預設全員）</label>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
                 {members.map(m=>{ const sel=forMemberIds.includes(m.uid); return (
-                  <button key={m.uid} type="button" onClick={()=>{ const cur=forMemberIds; const next=sel?cur.filter(x=>x!==m.uid):[...cur,m.uid]; if(next.length===0)return; setWalletModal(p=>({...p,data:{...p.data,forMemberIds:next}})); }}
+                  <button key={m.uid} type="button" onClick={()=>{ const next=sel?forMemberIds.filter(x=>x!==m.uid):[...forMemberIds,m.uid]; if(next.length===0)return; setWalletModal(p=>({...p,data:{...p.data,forMemberIds:next}})); }}
                     style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, backgroundColor:sel?C.purple:'transparent', color:sel?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                     {m.uid===user.uid?`${m.displayName}（我）`:m.displayName}
                   </button>
                 );})}
               </div>
+              {forMemberIds.length>1&&d.amount&&<div style={{ fontSize:11, color:C.purple, fontWeight:700, marginTop:6 }}>{perHint(d.amount,forMemberIds)}</div>}
             </div>
           )}
 
-          {/* 個人記帳：代墊設定 */}
+          {/* 個人記帳：代墊設定（跟舊版一樣） */}
           {!isShared && (
-            <div style={{ marginBottom:12, backgroundColor:C.blueSoft, borderRadius:12, padding:'12px 14px', border:`1px solid ${C.blue}22` }}>
+            <div style={{ marginBottom:14, backgroundColor:C.blueSoft, borderRadius:12, padding:'12px 14px', border:`1px solid ${C.blue}22` }}>
               <label style={{ ...gs.label, color:C.blue }}>💳 代墊設定（選填）</label>
               <div style={{ marginBottom:8, marginTop:6 }}>
                 <label style={gs.label}>代墊人</label>
-                <select value={d.splitPayerId||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,splitPayerId:e.target.value||null,splitReceiverIds:[]}}))} style={{ ...gs.input, cursor:'pointer' }}>
+                <select value={d.splitPayerId||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,splitPayerId:e.target.value||null,splitReceiverIds:[]}}))}
+                  style={{ ...gs.input, cursor:'pointer' }}>
                   <option value="">無（自己的帳）</option>
                   {members.map(m=><option key={m.uid} value={m.uid}>{m.uid===user.uid?`${m.displayName}（我）`:m.displayName}</option>)}
                 </select>
               </div>
-              {d.splitPayerId&&(
+              {d.splitPayerId && (
                 <div>
-                  <label style={gs.label}>幫誰代墊（可多選）</label>
+                  <label style={gs.label}>幫誰代墊（可多選，包含代墊人自己）</label>
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
                     {members.map(m=>{ const sel=(d.splitReceiverIds||[]).includes(m.uid); return (
                       <button key={m.uid} type="button" onClick={()=>{ const cur=d.splitReceiverIds||[]; const next=sel?cur.filter(x=>x!==m.uid):[...cur,m.uid]; setWalletModal(p=>({...p,data:{...p.data,splitReceiverIds:next}})); }}
@@ -3080,11 +3127,9 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </button>
                     );})}
                   </div>
-                  {(d.splitReceiverIds||[]).length>0&&d.amount&&(()=>{
-  const t=Number(d.amount); const n=(d.splitReceiverIds||[]).length;
-  const per=Math.floor(t/n); const rem=t-per*n;
-  return <div style={{ fontSize:11, color:C.blue, fontWeight:700, marginTop:6 }}>每人 {per.toLocaleString()}{rem>0?` 元（${rem} 人多付 1）`:' 元'} {d.currency||'JPY'}</div>;
-})()}
+                  {(d.splitReceiverIds||[]).length>0&&d.amount&&(
+                    <div style={{ fontSize:11, color:C.blue, fontWeight:700, marginTop:6 }}>{perHint(d.amount,d.splitReceiverIds)}</div>
+                  )}
                 </div>
               )}
             </div>
@@ -3094,26 +3139,46 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput key="wallet-note" style={gs.input} placeholder="選填" value={d.note||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,note:v}}))} /></div>
 
           <button onClick={()=>{
-            if(!d.name?.trim()||!d.amount||!d.date)return;
-            const allUids=members.map(m=>m.uid);
-            // 格式化日期 2026-06-20 → 06/20
+            if(!d.name?.trim()||!d.amount||!d.date) return;
             const dateFormatted = d.date.includes('-') ? d.date.split('-').slice(1).join('/') : d.date;
-            const fd={...d, date:dateFormatted, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:d.createdAt||Date.now(),
-              contributorIds:isShared&&d.type==='存入'?contributorIds:undefined,
-              forMemberIds:isShared&&d.type==='支出'?forMemberIds:undefined,
+            const fd = { ...d, date:dateFormatted, editedByName:user.displayName||user.email, editedById:user.uid,
+              createdAt: d.createdAt||Date.now(),
+              contributorIds: isShared&&d.type==='存入' ? contributorIds : undefined,
+              forMemberIds: isShared&&d.type==='支出' ? forMemberIds : undefined,
             };
-            // 清掉 undefined
-            const clean=Object.fromEntries(Object.entries(fd).filter(([,v])=>v!==undefined));
-            const curItems=isShared?walletItems:personalWalletItems; const n=d.id?curItems.map(i=>i.id===d.id?clean:i):[...curItems,{...clean,id:Date.now()}];
-            if(isShared){setWalletItems(n);saveWallet(n);}else{setPersonalWalletItems(n);savePersonalWallet(n);}
+            const clean = Object.fromEntries(Object.entries(fd).filter(([,v])=>v!==undefined));
+            const curItems = isShared ? walletItems : personalWalletItems;
+            const n = d.id ? curItems.map(i=>i.id===d.id?clean:i) : [...curItems,{...clean,id:Date.now()}];
+            if(isShared){ setWalletItems(n); saveWallet(n); }
+            else { setPersonalWalletItems(n); savePersonalWallet(n); }
             setWalletSelectedDate(dateFormatted);
-            // 代墊記錄
-            if(!isShared&&d.splitPayerId&&(d.splitReceiverIds||[]).length>0&&d.amount){
-              const receivers=d.splitReceiverIds||[];
-              const per=Math.floor(Number(d.amount)/receivers.length);
-              const now=Date.now();
-              const newRecs=receivers.map((rid,i)=>({ id:now+i+100, payerId:d.splitPayerId, receiverId:rid, amount:per, currency:d.currency||'JPY', note:d.name||'', createdAt:now }));
-              const nr=[...splitRecords,...newRecs]; setSplitRecords(nr); saveSplitRecords(nr);
+
+            // 代墊記錄：先刪舊的（如果是編輯），再建新的
+            if(!isShared && d.splitPayerId && (d.splitReceiverIds||[]).length>0 && d.amount){
+              const now = Date.now();
+              let baseRecords = [...splitRecords];
+              if(d.id) {
+                // 刪除這筆帳目相關的舊 splitRecords（用 createdAt 或 walletItemId 對應）
+                baseRecords = baseRecords.filter(r => r.walletItemId !== d.id);
+              }
+              const receivers = d.splitReceiverIds||[];
+              const total = Number(d.amount)||0;
+              const n2 = receivers.length;
+              const per = Math.floor(total/n2);
+              const rem = total - per*n2;
+              const sortedReceivers = [...receivers].sort(); // 固定排序決定誰多付
+              const newRecs = sortedReceivers.map((rid,i)=>({
+                id: now+i+100,
+                walletItemId: d.id || now, // 連結到帳目
+                payerId: d.splitPayerId,
+                receiverId: rid,
+                amount: per+(i<rem?1:0),
+                currency: d.currency||'JPY',
+                note: d.name||'',
+                createdAt: now,
+              }));
+              const nr = [...baseRecords, ...newRecs];
+              setSplitRecords(nr); saveSplitRecords(nr);
             }
             setWalletModal({open:false,data:null}); setWalletCalc(false);
           }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${pageColor},${C.blue})`, color:'#fff' }}>確認儲存</button>
@@ -3121,52 +3186,6 @@ function TripDetailScreen({ user, trip, onBack }) {
       </div>
     );
   };
-
-  // 結算 Modal
-  const SettlementModal = () => !showSettlement ? null : (
-    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:300 }}>
-      <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'85vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <div style={{ fontSize:16, fontWeight:800 }}>結算</div>
-          <button onClick={() => setShowSettlement(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
-        </div>
-        {settlements.length===0 ? (
-          <div style={{ textAlign:'center', padding:'40px 20px' }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>🎉</div>
-            <div style={{ fontSize:15, fontWeight:700, color:C.green }}>全部結清了！</div>
-          </div>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {settlements.map((t,idx) => {
-              const fromM=members.find(m=>m.uid===t.from)||{displayName:'?'};
-              const toM=members.find(m=>m.uid===t.to)||{displayName:'?'};
-              const iAmFrom=t.from===user.uid;
-              const iAmTo=t.to===user.uid;
-              return (
-                <div key={idx} style={{ ...gs.card, padding:'14px 16px', backgroundColor: iAmTo?C.greenSoft:iAmFrom?C.dangerSoft:C.surface, border:`1px solid ${iAmTo?C.green:iAmFrom?C.danger:C.border}33` }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:700 }}>
-                        {iAmFrom?'我':fromM.displayName} → {iAmTo?'我':toM.displayName}
-                      </div>
-                      <div style={{ fontSize:18, fontWeight:800, color:iAmTo?C.green:iAmFrom?C.danger:C.text, marginTop:4 }}>
-                        {sym[t.currency]||''}{t.amount.toLocaleString()} {t.currency}
-                      </div>
-                    </div>
-                    {(iAmFrom||iAmTo) && (
-                      <div style={{ fontSize:12, fontWeight:700, color:iAmTo?C.green:C.danger, padding:'6px 12px', borderRadius:10, border:`1px solid ${iAmTo?C.green:C.danger}33`, backgroundColor:iAmTo?C.greenSoft:C.dangerSoft }}>
-                        {iAmTo?'待收款':'待還款'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 
   // 幣別設定 Modal
   const CurrencySettingsModal = () => {
@@ -3347,7 +3366,6 @@ function TripDetailScreen({ user, trip, onBack }) {
       {ShoppingModal()}
       {ManageShopOptionsModal()}
       {WalletModal()}
-      {SettlementModal()}
       {CurrencySettingsModal()}
       {MemoModal()}
       {shopBoughtModal && (
@@ -3409,4 +3427,3 @@ export default function App() {
   if (currentTrip) return <TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} />;
   return <TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />;
 }
-
