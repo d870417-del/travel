@@ -1399,7 +1399,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       const sortedSplitTo = [...splitTo].sort();
       const splitN = sortedSplitTo.length;
       // 用 createdAt hash 輪換多付者
-      const splitOffset = record.createdAt ? (Math.floor(record.createdAt/1000) % splitN) : 0;
+      const splitOffset = w.createdAt ? (Math.floor(w.createdAt/1000) % splitN) : 0;
       sortedSplitTo.forEach((uid, i) => {
         if (!balance[uid]) balance[uid] = {};
         if (!balance[payer]) balance[payer] = {};
