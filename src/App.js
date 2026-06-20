@@ -717,6 +717,72 @@ function JoinTripModal({ user, onClose, onJoined }) {
 
 // ─── 旅程內頁 ─────────────────────────────────────────────────
 // ─── 確認刪除 Dialog ──────────────────────────────────────────
+// ─── 可展開成員結算卡片 ──────────────────────────────────────
+const ExpandableMemberCard = React.memo(function ExpandableMemberCard({ m, bal, hasBal, detail, SYM, effRates, toTWD, isMe }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const mc = [C.blue, C.green, C.purple, '#E0875A'][(m.displayName||'').charCodeAt(0)%4];
+  const currencies = Object.keys(bal).filter(c=>bal[c]!==0);
+
+  return (
+    <div style={{ ...gs.card, padding:0, overflow:'hidden' }}>
+      {/* 主列 */}
+      <div style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ width:36, height:36, borderRadius:'50%', backgroundColor:mc+'22', border:`1.5px solid ${mc}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:700, color:mc, flexShrink:0 }}>
+          {(m.displayName||'?')[0].toUpperCase()}
+        </div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:14, fontWeight:700 }}>{m.displayName}{isMe&&<span style={{ fontSize:11, color:C.textMuted, marginLeft:4 }}>（我）</span>}</div>
+          {!hasBal ? (
+            <div style={{ fontSize:11, color:C.textMuted }}>無異動</div>
+          ) : (
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:2 }}>
+              {currencies.map(cur=>{
+                const v=bal[cur];
+                return (
+                  <div key={cur}>
+                    <span style={{ fontSize:13, fontWeight:800, color:v>=0?C.green:C.danger }}>{v>=0?'+':''}{SYM[cur]||''}{Math.abs(v).toLocaleString()}</span>
+                    <span style={{ fontSize:10, color:C.textMuted, marginLeft:4 }}>≈ NT${toTWD(Math.abs(v),cur).toLocaleString()}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {detail.length>0 && (
+          <button onClick={()=>setExpanded(e=>!e)}
+            style={{ padding:'5px 10px', borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+            明細 {expanded?'▲':'▼'}
+          </button>
+        )}
+      </div>
+      {/* 展開明細 */}
+      {expanded && (
+        <div style={{ borderTop:`1px solid ${C.border}`, padding:'10px 14px', backgroundColor:'#F8F4EE' }}>
+          {detail.map((w,wi)=>{
+            const isIn = w.type==='存入';
+            const allUids = Object.keys(effRates).length>0?[]:[];
+            const per = isIn
+              ? Math.floor((Number(w.amount)||0)/((w.contributorIds||[]).length||1))
+              : Math.floor((Number(w.amount)||0)/((w.forMemberIds||[]).length||1));
+            return (
+              <div key={wi} style={{ display:'flex', alignItems:'center', gap:8, paddingBottom:8, marginBottom:8, borderBottom:wi<detail.length-1?`1px solid ${C.border}`:'none' }}>
+                <div style={{ width:8, height:8, borderRadius:'50%', backgroundColor:isIn?C.green:C.danger, flexShrink:0 }} />
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.text }}>{w.name}</div>
+                  <div style={{ fontSize:10, color:C.textMuted }}>{w.date} · {isIn?`存入（每人 ${SYM[w.currency]||''}${per.toLocaleString()}）`:`支出（每人 ${SYM[w.currency]||''}${per.toLocaleString()}）`}</div>
+                </div>
+                <div style={{ fontSize:12, fontWeight:800, color:isIn?C.green:C.danger, flexShrink:0 }}>
+                  {isIn?'+':'-'}{SYM[w.currency]||''}{per.toLocaleString()}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ─── 編輯旅程 Modal ──────────────────────────────────────────
 function EditTripModal({ trip, onClose, onSaved }) {
   const [name, setName] = useState(trip.name || '');
@@ -998,6 +1064,10 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [mfoNewFoodType, setMfoNewFoodType] = useState('');
   const [shoppingModal, setShoppingModal] = useState({ open:false, data:null });
   const [shopTempPhotos, setShopTempPhotos] = useState([]);
+  const [shopBoughtModal, setShopBoughtModal] = useState(null); // { item }
+  const [shopBoughtPrice, setShopBoughtPrice] = useState('');
+  const [shopBoughtCurrency, setShopBoughtCurrency] = useState('JPY');
+  const [shopBoughtNote, setShopBoughtNote] = useState('');
   const [shopFilterCity, setShopFilterCity] = useState('全部城市');
   const [shopFilterMall, setShopFilterMall] = useState('全部商場');
   const [shopFilterMember, setShopFilterMember] = useState('all');
@@ -1783,32 +1853,50 @@ function TripDetailScreen({ user, trip, onBack }) {
         {/* ── 公費結算 Modal ── */}
         {showPoolSettlement&&(
           <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:400 }}>
-            <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+            <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'90vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                 <div style={{ fontSize:16, fontWeight:800 }}>📊 公費結算</div>
                 <button onClick={()=>setShowPoolSettlement(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
               </div>
-              <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>1 JPY ≈ NT${rates.JPY}・1 KRW ≈ NT${rates.KRW}・{ratesUpdatedAt}</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:16 }}>
+              <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>
+                {tripCurrencies.filter(c=>c!=='TWD').map(c=>`1 ${c} ≈ NT${(manualRates[c]||rates[c]||'?')}`).join('・')}
+              </div>
+
+              {/* 總覽 */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+                {['存入','支出'].map(type=>{
+                  const agg=walletItems.filter(w=>w.type===type).reduce((acc,w)=>{ const c=w.currency||'TWD'; acc[c]=(acc[c]||0)+Number(w.amount||0); return acc; },{});
+                  const effRates={...rates,...manualRates};
+                  const totalTWD=Object.entries(agg).reduce((s,[c,v])=>s+Math.round(v*(effRates[c]||1)),0);
+                  return (
+                    <div key={type} style={{ ...gs.card, padding:'10px 14px' }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:type==='存入'?C.green:C.purple, marginBottom:6 }}>總{type}</div>
+                      {Object.entries(agg).filter(([,v])=>v>0).map(([c,v])=>(
+                        <div key={c} style={{ fontSize:13, fontWeight:700 }}>{SYM[c]||''}{v.toLocaleString()} {c}</div>
+                      ))}
+                      {totalTWD>0 && <div style={{ fontSize:10, color:C.textMuted, marginTop:2 }}>≈ NT${totalTWD.toLocaleString()}</div>}
+                      {Object.values(agg).every(v=>v===0) && <div style={{ fontSize:11, color:C.textMuted }}>無</div>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 每人明細 */}
+              <div style={{ fontSize:12, fontWeight:700, color:C.textMuted, textTransform:'uppercase', marginBottom:10 }}>每人結算</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
                 {members.map(m=>{
+                  const effRates={...rates,...manualRates};
                   const bal=memberBalance[m.uid]||{};
                   const hasBal=Object.values(bal).some(v=>v!==0);
+                  // 取得這個人的明細
+                  const detail=walletItems.filter(w=>{
+                    const allUids=members.map(x=>x.uid);
+                    if(w.type==='存入') return (w.contributorIds||allUids).includes(m.uid);
+                    return (w.forMemberIds||allUids).includes(m.uid);
+                  });
+                  const [expanded, setExpanded] = [false, ()=>{}]; // 用 state 在外層
                   return (
-                    <div key={m.uid} style={{ ...gs.card, padding:'14px 16px' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:hasBal?10:0 }}>
-                        <div style={{ width:36,height:36,borderRadius:'50%',backgroundColor:C.purpleSoft,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,color:C.purple,flexShrink:0 }}>{(m.displayName||'?')[0].toUpperCase()}</div>
-                        <div style={{ fontSize:14, fontWeight:700 }}>{m.displayName}{m.uid===user.uid&&<span style={{ fontSize:11,color:C.textMuted,marginLeft:4 }}>（我）</span>}</div>
-                      </div>
-                      {!hasBal ? <div style={{ fontSize:11,color:C.textMuted }}>無異動</div> : Object.entries(bal).filter(([,v])=>v!==0).map(([cur,v])=>(
-                        <div key={cur} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderTop:`1px solid ${C.border}` }}>
-                          <div style={{ fontSize:12,color:C.textMuted }}>{cur}</div>
-                          <div style={{ fontSize:14,fontWeight:800,color:v>=0?C.green:C.danger }}>
-                            {v>=0?'+':''}{SYM[cur]||''}{Math.abs(v).toLocaleString()}
-                            <span style={{ fontSize:10,color:C.textMuted,fontWeight:400,marginLeft:4 }}>≈ NT${toTWD(Math.abs(v),cur).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <ExpandableMemberCard key={m.uid} m={m} bal={bal} hasBal={hasBal} detail={detail} SYM={SYM} effRates={effRates} toTWD={toTWD} isMe={m.uid===user.uid} />
                   );
                 })}
               </div>
@@ -1961,8 +2049,15 @@ function TripDetailScreen({ user, trip, onBack }) {
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                     <button onClick={() => {
-                      const n=shoppingItems.map(i=>i.id===item.id?{...i,isBought:!i.isBought,boughtAt:!i.isBought?new Date().toLocaleString('zh-TW'):null}:i);
-                      setShoppingItems(n);saveShopping(n);
+                      if (item.isBought) {
+                        // 取消已買
+                        setConfirmDel({title:'取消購買',message:`取消「${item.name}」的購買記錄？`,fn:()=>{ const n=shoppingItems.map(i=>i.id===item.id?{...i,isBought:false,boughtAt:null,boughtPrice:null,boughtCurrency:null,boughtNote:null}:i); setShoppingItems(n);saveShopping(n); }});
+                      } else {
+                        setShopBoughtModal({item});
+                        setShopBoughtPrice('');
+                        setShopBoughtCurrency((tripCurrencies||['JPY'])[0]||'JPY');
+                        setShopBoughtNote('');
+                      }
                     }} style={{ width:28, height:28, borderRadius:8, border:`2px solid ${item.isBought?'#BE185D':C.border}`, backgroundColor:item.isBought?'#BE185D':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
                       {item.isBought && <span style={{ color:'#fff', fontSize:14, fontWeight:800 }}>✓</span>}
                     </button>
@@ -1971,6 +2066,16 @@ function TripDetailScreen({ user, trip, onBack }) {
                       {item.note && <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{item.note}</div>}
                     </div>
                   </div>
+                  {item.isBought && item.boughtPrice && (
+                    <div style={{ marginTop:6, padding:'5px 10px', backgroundColor:'#FDE8F3', borderRadius:8, fontSize:11, color:'#BE185D', fontWeight:700, display:'flex', gap:6, alignItems:'center' }}>
+                      <span>✓ 已買</span>
+                      <span>{item.boughtCurrency} {Number(item.boughtPrice).toLocaleString()}</span>
+                      {item.boughtNote && <span style={{ color:C.textMuted, fontWeight:400 }}>· {item.boughtNote}</span>}
+                    </div>
+                  )}
+                  {item.isBought && !item.boughtPrice && (
+                    <div style={{ marginTop:6, padding:'5px 10px', backgroundColor:'#FDE8F3', borderRadius:8, fontSize:11, color:'#BE185D', fontWeight:700 }}>✓ 已買</div>
+                  )}
                   {item.photos?.length > 0 && (
                     <div style={{ display:'flex', gap:6, overflowX:'auto', marginTop:8, marginBottom:4 }}>
                       {item.photos.map((p,pi) => <img key={pi} src={p} style={{ width:56, height:56, objectFit:'cover', borderRadius:8, flexShrink:0, border:`1px solid ${C.border}` }} alt="shop" />)}
@@ -2028,7 +2133,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
           <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
             <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
-            <div style={{ fontSize:15, fontWeight:800 }}>{isShared?'大家的備忘錄':'我的備忘錄'}</div>
+            <div style={{ fontSize:15, fontWeight:800 }}>{isShared?'共用備忘錄':'個人備忘錄'}</div>
           </div>
           <div style={{ padding:16, flex:1 }}>
             {sorted.length===0 ? (
@@ -2058,12 +2163,17 @@ function TripDetailScreen({ user, trip, onBack }) {
                         {(memo.items||[]).map((item,ii) => (
                           <div key={item.id||ii} style={{ display:'flex', alignItems:'center', gap:10 }}>
                             <button onClick={() => {
-                              const newItems = (memo.items||[]).map((x,xi)=>xi===ii?{...x,done:!x.done}:x);
+                              const now = new Date();
+                              const ts = `${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`;
+                              const newItems = (memo.items||[]).map((x,xi)=>xi===ii?{...x,done:!x.done,doneAt:!x.done?ts:null}:x);
                               setMemoItems(p=>p.map(m=>m.id===memo.id?{...m,items:newItems}:m));
                             }} style={{ width:24, height:24, borderRadius:6, border:`2px solid ${item.done?C.green:C.border}`, backgroundColor:item.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
                               {item.done && <span style={{ color:'#fff', fontSize:12, fontWeight:800 }}>✓</span>}
                             </button>
-                            <span style={{ fontSize:14, color:item.done?C.textMuted:C.text, textDecoration:item.done?'line-through':'none', flex:1 }}>{item.text}</span>
+                            <div style={{ flex:1 }}>
+                              <span style={{ fontSize:14, color:item.done?C.textMuted:C.text, textDecoration:item.done?'line-through':'none' }}>{item.text}</span>
+                              {item.done && item.doneAt && <div style={{ fontSize:10, color:C.textMuted, marginTop:2 }}>✓ {item.doneAt}</div>}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2152,8 +2262,8 @@ function TripDetailScreen({ user, trip, onBack }) {
 
     // ── 更多首頁 ──
     const moreItems = [
-      { id:'shared-memo', emoji:'📋', label:'大家的備忘錄', desc:`${sharedMemos.length} 則`, color:C.blue, bg:C.blueSoft },
-      { id:'personal-memo', emoji:'🗒', label:'我的備忘錄', desc:`${personalMemos.length} 則`, color:C.purple, bg:C.purpleSoft },
+      { id:'shared-memo', emoji:'📋', label:'共用備忘錄', desc:`${sharedMemos.length} 則`, color:C.blue, bg:C.blueSoft },
+      { id:'personal-memo', emoji:'🗒', label:'個人備忘錄', desc:`${personalMemos.length} 則`, color:C.purple, bg:C.purpleSoft },
       { id:'members', emoji:'👥', label:'成員', desc:`${members.length} 人`, color:'#D97706', bg:'#FEF3E8' },
       { id:'invite', emoji:'🔑', label:'邀請碼', desc:trip.inviteCode||'...', color:C.green, bg:C.greenSoft },
     ];
@@ -3104,6 +3214,40 @@ function TripDetailScreen({ user, trip, onBack }) {
       {SettlementModal()}
       {CurrencySettingsModal()}
       {MemoModal()}
+      {shopBoughtModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16, backgroundColor:'rgba(45,42,36,0.5)' }}>
+          <div style={{ ...gs.card, width:'100%', maxWidth:340 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+              <div style={{ fontSize:16, fontWeight:800, color:'#BE185D' }}>記錄購買金額</div>
+              <button onClick={() => setShopBoughtModal(null)} style={{ background:'none', border:'none', fontSize:24, cursor:'pointer', color:C.textMuted }}>×</button>
+            </div>
+            <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:C.text }}>{shopBoughtModal.item.name}</div>
+            <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+              <input type="number" value={shopBoughtPrice} onChange={e=>setShopBoughtPrice(e.target.value)} placeholder="金額（選填）"
+                style={{ ...gs.input, flex:1 }} />
+              <select value={shopBoughtCurrency} onChange={e=>setShopBoughtCurrency(e.target.value)}
+                style={{ ...gs.input, width:'auto', padding:'12px 8px', cursor:'pointer' }}>
+                {(tripCurrencies||['JPY','KRW','TWD']).map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <ImeInput key="shop-bought-note" style={gs.input} placeholder="備註（代購對象等）" value={shopBoughtNote} onChange={v=>setShopBoughtNote(v)} />
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => {
+                const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`;
+                const n=shoppingItems.map(i=>i.id===shopBoughtModal.item.id?{...i,isBought:true,boughtAt:ts,boughtPrice:shopBoughtPrice||null,boughtCurrency:shopBoughtCurrency,boughtNote:shopBoughtNote||null}:i);
+                setShoppingItems(n);saveShopping(n);setShopBoughtModal(null);
+              }} style={{ flex:1, padding:12, border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>確認已買</button>
+              <button onClick={() => {
+                const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')}`;
+                const n=shoppingItems.map(i=>i.id===shopBoughtModal.item.id?{...i,isBought:true,boughtAt:ts,boughtPrice:null,boughtCurrency:null,boughtNote:null}:i);
+                setShoppingItems(n);saveShopping(n);setShopBoughtModal(null);
+              }} style={{ flex:1, padding:12, border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:600, cursor:'pointer' }}>略過金額</button>
+            </div>
+          </div>
+        </div>
+      )}
       {DatePickerModal()}
       <ConfirmDialog isOpen={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { confirmDel?.fn(); setConfirmDel(null); }} title={confirmDel?.title} message={confirmDel?.message} />
     </div>
