@@ -2366,8 +2366,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           branches: selectedDistrict ? [{name:selectedDistrict, mapUrl:''}] : [],
         }});
         setShopTempPhotos([]);
-      }}
-        style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(190,24,93,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+      }} style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(190,24,93,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
     </div>
   );
 
