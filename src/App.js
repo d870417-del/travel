@@ -2320,24 +2320,24 @@ function TripDetailScreen({ user, trip, onBack }) {
   // ════════════════════════════════════════
   return (
     <div style={{ ...gs.app, maxHeight:'100vh' }}>
-      <TripHeader />
-      {tab==='itinerary' && <ItineraryTab />}
-      {tab==='food' && <FoodTab />}
-      {tab==='wallet' && <WalletTab />}
-      {tab==='shopping' && <ShoppingTab />}
-      {tab==='more' && <MoreTab />}
-      <TabBar />
+      {TripHeader()}
+      {tab==='itinerary' && ItineraryTab()}
+      {tab==='food' && FoodTab()}
+      {tab==='wallet' && WalletTab()}
+      {tab==='shopping' && ShoppingTab()}
+      {tab==='more' && MoreTab()}
+      {TabBar()}
 
-      <ItineraryModal />
-      <FoodModal />
-      <ManageFoodOptionsModal />
-      <ShoppingModal />
-      <ManageShopOptionsModal />
-      <WalletModal />
-      <SettlementModal />
-      <TodoModal />
-      <NoteModal />
-      <DatePickerModal />
+      {ItineraryModal()}
+      {FoodModal()}
+      {ManageFoodOptionsModal()}
+      {ShoppingModal()}
+      {ManageShopOptionsModal()}
+      {WalletModal()}
+      {SettlementModal()}
+      {TodoModal()}
+      {NoteModal()}
+      {DatePickerModal()}
       <ConfirmDialog isOpen={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { confirmDel?.fn(); setConfirmDel(null); }} title={confirmDel?.title} message={confirmDel?.message} />
     </div>
   );
