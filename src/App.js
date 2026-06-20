@@ -378,6 +378,16 @@ function TripListScreen({ user, onEnterTrip }) {
                       <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
                         {(trip.destinations||[trip.destination]).filter(Boolean).map(d=>`📍 ${d}`).join(' · ')}
                         {trip.startDate && ` · ${fmtDate(trip.startDate)}${trip.endDate ? ` – ${fmtDate(trip.endDate)}` : ""}`}
+                        {trip.startDate && (() => {
+                          const today = new Date(); today.setHours(0,0,0,0);
+                          const start = new Date(trip.startDate); start.setHours(0,0,0,0);
+                          const end = trip.endDate ? new Date(trip.endDate) : start; end.setHours(0,0,0,0);
+                          const diff = Math.ceil((start - today) / 86400000);
+                          if (diff > 0) return ` · 還有 ${diff} 天 🗓`;
+                          if (diff === 0) return ` · 今天出發！🎉`;
+                          if (today <= end) return ` · 旅遊中 ✈️`;
+                          return ` · 已結束`;
+                        })()}
                       </div>
                     </div>
                     <div style={{ color: color, fontSize: 18, fontWeight: 700 }}>›</div>
@@ -957,6 +967,10 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [transferStates, setTransferStates] = useState({});
   const [sharedTodos, setSharedTodos] = useState([]);
   const [sharedNotes, setSharedNotes] = useState([]);
+  const [sharedMemos, setSharedMemos] = useState([]);
+  const [personalMemos, setPersonalMemos] = useState([]);
+  const [memoModal, setMemoModal] = useState({ open:false, data:null, scope:'shared' });
+  const [memoPhoto, setMemoPhoto] = useState(null);
 
   // ── UI state ──
   const [modal, setModal] = useState({ open:false, data:null });
@@ -1127,9 +1141,22 @@ function TripDetailScreen({ user, trip, onBack }) {
   async function loadNotes() {
     const s = await getDoc(doc(db,"tripData",`${trip.id}_notes`));
     if (s.exists()) setSharedNotes(s.data().items||[]);
+    // 載入新格式備忘錄
+    try {
+      const sm = await getDoc(doc(db,"tripData",`${trip.id}_sharedMemos`));
+      if (sm.exists()) setSharedMemos(sm.data().items||[]);
+      const pm = await getDoc(doc(db,"tripData",`${trip.id}_personalMemos_${user.uid}`));
+      if (pm.exists()) setPersonalMemos(pm.data().items||[]);
+    } catch(e) {}
   }
   async function saveNotes(items) {
     await setDoc(doc(db,"tripData",`${trip.id}_notes`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
+  }
+  async function saveSharedMemos(items) {
+    await setDoc(doc(db,"tripData",`${trip.id}_sharedMemos`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
+  }
+  async function savePersonalMemos(items) {
+    await setDoc(doc(db,"tripData",`${trip.id}_personalMemos_${user.uid}`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
   }
 
   // ── helpers ──
@@ -1980,73 +2007,73 @@ function TripDetailScreen({ user, trip, onBack }) {
   // 更多 Tab
   // ════════════════════════════════════════
   const MoreTab = () => {
-    if (moreSection==='todos') {
-      const sorted=[...sharedTodos.filter(t=>!t.status).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)),...sharedTodos.filter(t=>t.status)];
+    const memoItems = moreSection==='shared-memo' ? sharedMemos : personalMemos;
+    const setMemoItems = moreSection==='shared-memo'
+      ? (fn) => { const n=typeof fn==='function'?fn(sharedMemos):fn; setSharedMemos(n); saveSharedMemos(n); }
+      : (fn) => { const n=typeof fn==='function'?fn(personalMemos):fn; setPersonalMemos(n); savePersonalMemos(n); };
+
+    // ── 備忘錄詳情（單則）──
+    if (moreSection==='shared-memo' || moreSection==='personal-memo') {
+      const isShared = moreSection==='shared-memo';
+      const sorted = [...memoItems].sort((a,b)=>(b.createdAtMs||0)-(a.createdAtMs||0));
       return (
         <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
           <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
             <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
-            <div style={{ fontSize:15, fontWeight:800 }}>共同清單</div>
+            <div style={{ fontSize:15, fontWeight:800 }}>{isShared?'大家的備忘錄':'我的備忘錄'}</div>
           </div>
           <div style={{ padding:16, flex:1 }}>
-            {sorted.length===0 ? <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>尚無清單，點右下角 ＋ 新增</div> : (
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {sorted.map(todo => (
-                  <div key={todo.id} style={{ ...gs.card, padding:'14px 16px', opacity:todo.status?0.6:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <button onClick={() => { const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`; const n=sharedTodos.map(t=>t.id===todo.id?{...t,status:!t.status,completedByName:!t.status?(user.displayName||user.email):null,completedAt:!t.status?ts:null}:t); setSharedTodos(n);saveTodos(n); }}
-                        style={{ width:28, height:28, borderRadius:8, border:`2px solid ${todo.status?C.green:C.border}`, backgroundColor:todo.status?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
-                        {todo.status && <span style={{ color:'#fff', fontSize:14, fontWeight:800 }}>✓</span>}
-                      </button>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:14, fontWeight:700, textDecoration:todo.status?'line-through':'none' }}>{todo.content}</div>
-                        {todo.note && <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{todo.note}</div>}
-                        <div style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>{todo.editedByName} 新增{todo.status&&` · ✓ ${todo.completedByName} ${todo.completedAt}`}</div>
+            {sorted.length===0 ? (
+              <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>尚無備忘錄，點右下角 ＋ 新增</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {sorted.map(memo => (
+                  <div key={memo.id} style={{ ...gs.card, padding:'16px' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                      <div>
+                        {memo.title && <div style={{ fontSize:15, fontWeight:800, color:C.text, marginBottom:4 }}>{memo.title}</div>}
+                        <div style={{ display:'flex', gap:6 }}>
+                          <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:memo.type==='checklist'?C.greenSoft:C.blueSoft, color:memo.type==='checklist'?C.green:C.blue, fontSize:11, fontWeight:700 }}>
+                            {memo.type==='checklist'?'✅ 清單':'📝 記事'}
+                          </span>
+                        </div>
                       </div>
                       <div style={{ display:'flex', gap:6 }}>
-                        <button onClick={() => setTodoModal({open:true,data:todo})} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => { const n=sharedTodos.filter(t=>t.id!==todo.id); setSharedTodos(n);saveTodos(n); }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
+                        <button onClick={() => { setMemoModal({open:true, data:memo, scope:moreSection}); setMemoPhoto(memo.photo||null); }}
+                          style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
+                        <button onClick={() => setConfirmDel({title:'刪除備忘錄',message:'確定刪除這則備忘錄？',fn:()=>setMemoItems(p=>p.filter(m=>m.id!==memo.id))})}
+                          style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:12, cursor:'pointer' }}>×</button>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <button onClick={() => setTodoModal({open:true,data:{}})} style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
-        </div>
-      );
-    }
-
-    if (moreSection==='notes') {
-      const sorted=[...sharedNotes].filter(Boolean).sort((a,b)=>(b.createdAtMs||0)-(a.createdAtMs||0));
-      return (
-        <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
-          <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:C.textMuted }}>←</button>
-            <div style={{ fontSize:15, fontWeight:800 }}>共同記事</div>
-          </div>
-          <div style={{ padding:16, flex:1 }}>
-            {sorted.length===0 ? <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>尚無記事，點右下角 ＋ 新增</div> : (
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                {sorted.map(note => (
-                  <div key={note.id} style={{ ...gs.card, padding:'16px' }}>
-                    <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginBottom:8 }}>
-                      <button onClick={() => { setNoteModal({open:true,data:note}); setNotePhoto(note.photo||null); }} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                      <button onClick={() => { const n=sharedNotes.filter(x=>x.id!==note.id); setSharedNotes(n);saveNotes(n); }} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>×</button>
-                    </div>
-                    {note.photo && <img src={note.photo} style={{ width:'100%', height:160, objectFit:'cover', borderRadius:12, marginBottom:10 }} alt="note" />}
-                    {note.content && <div style={{ fontSize:14, color:C.text, whiteSpace:'pre-wrap', lineHeight:1.7, marginBottom:10 }}>{note.content}</div>}
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:C.textMuted, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
-                      <span>{note.date}</span>
-                      <span>{note.editedByName||'成員'} 記</span>
+                    {memo.photo && <img src={memo.photo} style={{ width:'100%', height:160, objectFit:'cover', borderRadius:12, marginBottom:10 }} alt="memo" />}
+                    {memo.type==='checklist' ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        {(memo.items||[]).map((item,ii) => (
+                          <div key={item.id||ii} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                            <button onClick={() => {
+                              const newItems = (memo.items||[]).map((x,xi)=>xi===ii?{...x,done:!x.done}:x);
+                              setMemoItems(p=>p.map(m=>m.id===memo.id?{...m,items:newItems}:m));
+                            }} style={{ width:24, height:24, borderRadius:6, border:`2px solid ${item.done?C.green:C.border}`, backgroundColor:item.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
+                              {item.done && <span style={{ color:'#fff', fontSize:12, fontWeight:800 }}>✓</span>}
+                            </button>
+                            <span style={{ fontSize:14, color:item.done?C.textMuted:C.text, textDecoration:item.done?'line-through':'none', flex:1 }}>{item.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      memo.content && <div style={{ fontSize:14, color:C.text, whiteSpace:'pre-wrap', lineHeight:1.7 }}>{memo.content}</div>
+                    )}
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:C.textMuted, paddingTop:10, marginTop:10, borderTop:`1px solid ${C.border}` }}>
+                      <span>{new Date(memo.createdAtMs||0).toLocaleDateString('zh-TW')}</span>
+                      <span>{memo.editedByName||'成員'} 記</span>
                     </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-          <button onClick={() => { setNoteModal({open:true,data:{}}); setNotePhoto(null); }} style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.blue},${C.purple})`, color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+          <button onClick={() => { setMemoModal({open:true, data:{type:'text', title:'', content:'', items:[], photo:null}, scope:moreSection}); setMemoPhoto(null); }}
+            style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.blue},${C.purple})`, color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
         </div>
       );
     }
@@ -2103,12 +2130,12 @@ function TripDetailScreen({ user, trip, onBack }) {
       </div>
     );
 
-    // 更多首頁
+    // ── 更多首頁 ──
     const moreItems = [
-      { id:'todos', emoji:'✅', label:'共同清單', desc:`${sharedTodos.filter(t=>!t.status).length} 件待完成`, color:C.green, bg:C.greenSoft },
-      { id:'notes', emoji:'📝', label:'共同記事', desc:`${sharedNotes.length} 則`, color:C.blue, bg:C.blueSoft },
+      { id:'shared-memo', emoji:'📋', label:'大家的備忘錄', desc:`${sharedMemos.length} 則`, color:C.blue, bg:C.blueSoft },
+      { id:'personal-memo', emoji:'🗒', label:'我的備忘錄', desc:`${personalMemos.length} 則`, color:C.purple, bg:C.purpleSoft },
       { id:'members', emoji:'👥', label:'成員', desc:`${members.length} 人`, color:'#D97706', bg:'#FEF3E8' },
-      { id:'invite', emoji:'🔑', label:'邀請碼', desc:trip.inviteCode||'...', color:C.purple, bg:C.purpleSoft },
+      { id:'invite', emoji:'🔑', label:'邀請碼', desc:trip.inviteCode||'...', color:C.green, bg:C.greenSoft },
     ];
     return (
       <div style={{ flex:1, overflowY:'auto', padding:20 }}>
@@ -2919,57 +2946,98 @@ function TripDetailScreen({ user, trip, onBack }) {
     );
   };
 
-  // 待辦 Modal
-  const TodoModal = () => !todoModal.open ? null : (
-    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
-      <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'80vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
-          <div style={{ fontSize:16, fontWeight:800 }}>{todoModal.data?.id?'編輯':'新增項目'}</div>
-          <button onClick={() => setTodoModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
-        </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>內容 *</label><ImeInput key="todo-content" style={gs.input} placeholder="輸入待辦事項..." value={todoModal.data?.content||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,content:v}}))} /></div>
-        <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput key="todo-note" multiline value={todoModal.data?.note||''} onChange={v=>setTodoModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
-        <button onClick={() => {
-          if(!todoModal.data?.content?.trim())return;
-          const fd={...todoModal.data,status:todoModal.data.status||false,editedByName:user.displayName||user.email,createdAt:todoModal.data.createdAt||Date.now()};
-          const n=todoModal.data.id?sharedTodos.map(t=>t.id===todoModal.data.id?fd:t):[...sharedTodos,{...fd,id:Date.now()}];
-          setSharedTodos(n);saveTodos(n);setTodoModal({open:false,data:null});
-        }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff' }}>確認儲存</button>
-      </div>
-    </div>
-  );
+  // 備忘錄 Modal
+  const MemoModal = () => {
+    if (!memoModal.open) return null;
+    const d = memoModal.data || {};
+    const isShared = memoModal.scope === 'shared-memo';
+    const acColor = isShared ? C.blue : C.purple;
+    const checkItems = d.items || [];
 
-  // 記事 Modal
-  const NoteModal = () => !noteModal.open ? null : (
-    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
-      <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
-          <div style={{ fontSize:16, fontWeight:800 }}>{noteModal.data?.id?'編輯記事':'新增記事'}</div>
-          <button onClick={() => setNoteModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
-        </div>
-        {notePhoto && (
-          <div style={{ position:'relative', width:'100%', height:160, borderRadius:12, overflow:'hidden', marginBottom:12 }}>
-            <img src={notePhoto} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt="tmp" />
-            <button onClick={() => setNotePhoto(null)} style={{ position:'absolute', top:8, right:8, background:'rgba(220,50,50,0.9)', border:'none', borderRadius:8, color:'#fff', padding:'4px 8px', cursor:'pointer', fontSize:12 }}>移除</button>
+    const setMemoItems = isShared
+      ? (fn) => { const n=typeof fn==='function'?fn(sharedMemos):fn; setSharedMemos(n); saveSharedMemos(n); }
+      : (fn) => { const n=typeof fn==='function'?fn(personalMemos):fn; setPersonalMemos(n); savePersonalMemos(n); };
+
+    const saveMemo = () => {
+      if (!d.title?.trim() && !d.content?.trim() && !memoPhoto && checkItems.filter(i=>i.text).length===0) return;
+      const now = Date.now();
+      const fd = { ...d, photo:memoPhoto, editedByName:user.displayName||user.email, editedById:user.uid, createdAtMs:d.createdAtMs||now, updatedAtMs:now };
+      setMemoItems(p => d.id ? p.map(m=>m.id===d.id?fd:m) : [{...fd, id:now}, ...p]);
+      setMemoModal({open:false, data:null, scope:'shared'});
+      setMemoPhoto(null);
+    };
+
+    return (
+      <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
+        <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'92vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ fontSize:16, fontWeight:800 }}>{d.id?'編輯備忘錄':'新增備忘錄'}</div>
+            <button onClick={() => { setMemoModal({open:false,data:null,scope:'shared'}); setMemoPhoto(null); }} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
           </div>
-        )}
-        <div style={{ marginBottom:12 }}>
-          <button onClick={() => document.getElementById('note-photo-input').click()} style={{ width:'100%', padding:'10px', border:`1.5px dashed ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:13, cursor:'pointer', fontWeight:600 }}>📷 新增相片</button>
-          <input type="file" id="note-photo-input" style={{ display:'none' }} accept="image/*" onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onloadend=()=>{ const img=new Image(); img.src=r.result; img.onload=()=>{ const c=document.createElement('canvas'); let w=img.width,h=img.height,max=800; if(w>h){if(w>max){h=h*max/w;w=max;}}else{if(h>max){w=w*max/h;h=max;}} c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);setNotePhoto(c.toDataURL('image/jpeg',0.7)); }; }; r.readAsDataURL(f); }} />
-        </div>
-        <div style={{ marginBottom:16 }}><ImeInput key="note-content" multiline value={noteModal.data?.content||''} onChange={v=>setNoteModal(p=>({...p,data:{...p.data,content:v}}))} placeholder="輸入記事內容..." rows={5} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
-        <button onClick={() => {
-          if(!noteModal.data?.content&&!notePhoto)return;
-          const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`;
-          const fd={...noteModal.data,photo:notePhoto,date:noteModal.data.date||ts,editedByName:user.displayName||user.email,createdAtMs:noteModal.data.createdAtMs||now.getTime()};
-          const n=noteModal.data.id?sharedNotes.map(x=>x.id===noteModal.data.id?fd:x):[{...fd,id:Date.now()},...sharedNotes];
-          setSharedNotes(n);saveNotes(n);setNoteModal({open:false,data:null});
-        }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${C.blue},${C.purple})`, color:'#fff' }}>確認儲存</button>
-      </div>
-    </div>
-  );
 
-  // ── 日期選擇器 ──
+          {/* 類型切換 */}
+          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+            {[['text','📝 記事'],['checklist','✅ 清單']].map(([type,label]) => (
+              <button key={type} type="button" onClick={() => setMemoModal(p=>({...p,data:{...p.data,type}}))}
+                style={{ flex:1, padding:10, borderRadius:12, border:`1.5px solid ${d.type===type?acColor:C.border}`, backgroundColor:d.type===type?acColor+'18':C.bg, color:d.type===type?acColor:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* 標題 */}
+          <div style={{ marginBottom:12 }}>
+            <ImeInput key="memo-title" style={gs.input} placeholder="標題（選填）" value={d.title||''} onChange={v=>setMemoModal(p=>({...p,data:{...p.data,title:v}}))} />
+          </div>
+
+          {/* 記事模式：文字 + 照片 */}
+          {d.type !== 'checklist' && (
+            <>
+              {memoPhoto && (
+                <div style={{ position:'relative', width:'100%', height:160, borderRadius:12, overflow:'hidden', marginBottom:12 }}>
+                  <img src={memoPhoto} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt="tmp" />
+                  <button onClick={() => setMemoPhoto(null)} style={{ position:'absolute', top:8, right:8, background:'rgba(220,50,50,0.9)', border:'none', borderRadius:8, color:'#fff', padding:'4px 8px', cursor:'pointer', fontSize:12 }}>移除</button>
+                </div>
+              )}
+              <div style={{ marginBottom:12 }}>
+                <button onClick={() => document.getElementById('memo-photo-input').click()} style={{ width:'100%', padding:'10px', border:`1.5px dashed ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:13, cursor:'pointer', fontWeight:600 }}>📷 新增相片</button>
+                <input type="file" id="memo-photo-input" style={{ display:'none' }} accept="image/*" onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onloadend=()=>{ const img=new Image(); img.src=r.result; img.onload=()=>{ const c=document.createElement('canvas'); let w=img.width,h=img.height,max=800; if(w>h){if(w>max){h=h*max/w;w=max;}}else{if(h>max){w=w*max/h;h=max;}} c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);setMemoPhoto(c.toDataURL('image/jpeg',0.7)); }; }; r.readAsDataURL(f); }} />
+              </div>
+              <div style={{ marginBottom:16 }}>
+                <ImeInput key="memo-content" multiline style={{ ...gs.input, resize:'none', fontFamily:'inherit', minHeight:120 }} placeholder="輸入內容..." value={d.content||''} onChange={v=>setMemoModal(p=>({...p,data:{...p.data,content:v}}))} rows={5} />
+              </div>
+            </>
+          )}
+
+          {/* 清單模式 */}
+          {d.type === 'checklist' && (
+            <div style={{ marginBottom:16 }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:10 }}>
+                {checkItems.map((item, ii) => (
+                  <div key={item.id||ii} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ width:24, height:24, borderRadius:6, border:`2px solid ${item.done?C.green:C.border}`, backgroundColor:item.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      {item.done && <span style={{ color:'#fff', fontSize:12, fontWeight:800 }}>✓</span>}
+                    </div>
+                    <ImeInput key={`memo-item-${ii}`} style={{ ...gs.input, flex:1, padding:'8px 12px', fontSize:14, textDecoration:item.done?'line-through':'none', color:item.done?C.textMuted:C.text }} placeholder="項目..." value={item.text||''}
+                      onChange={v=>setMemoModal(p=>({...p,data:{...p.data,items:p.data.items.map((x,xi)=>xi===ii?{...x,text:v}:x)}}))} />
+                    <button onClick={() => setMemoModal(p=>({...p,data:{...p.data,items:p.data.items.filter((_,xi)=>xi!==ii)}}))}
+                      style={{ background:'none', border:'none', color:C.textMuted, fontSize:16, cursor:'pointer', flexShrink:0 }}>×</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setMemoModal(p=>({...p,data:{...p.data,items:[...(p.data.items||[]),{id:Date.now(),text:'',done:false}]}}))}
+                style={{ width:'100%', padding:10, border:`1.5px dashed ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:acColor, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                ＋ 新增項目
+              </button>
+            </div>
+          )}
+
+          <button onClick={saveMemo} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${acColor},${C.purple})`, color:'#fff' }}>確認儲存</button>
+        </div>
+      </div>
+    );
+  };
+
   const DatePickerModal = () => !datePickerOpen ? null : (
     <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
       <div onClick={() => { setDatePickerOpen(false); setDatePickerInput(''); }} style={{ position:'absolute', inset:0, backgroundColor:'rgba(45,42,36,0.5)' }} />
@@ -3014,8 +3082,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       {WalletModal()}
       {SettlementModal()}
       {CurrencySettingsModal()}
-      {TodoModal()}
-      {NoteModal()}
+      {MemoModal()}
       {DatePickerModal()}
       <ConfirmDialog isOpen={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { confirmDel?.fn(); setConfirmDel(null); }} title={confirmDel?.title} message={confirmDel?.message} />
     </div>
