@@ -785,26 +785,13 @@ const ExpandableTransferCard = React.memo(function ExpandableTransferCard({
         </div>
       )}
 
-      {!done && (
-        <div style={{ display:'flex', gap:8 }}>
-          <button disabled={!iAmFrom||s.paidConfirmed} onClick={()=>{
-            const ns={...s,paidConfirmed:true}; setTransferStates(p=>({...p,[sk]:ns}));
-            if(ns.receivedConfirmed) settle();
-          }} style={{ flex:1, padding:'9px', borderRadius:10, border:`1px solid ${s.paidConfirmed?C.green:C.border}`, backgroundColor:s.paidConfirmed?C.greenSoft:C.bg, color:s.paidConfirmed?C.green:C.textMuted, fontSize:12, fontWeight:700, cursor:iAmFrom?'pointer':'default', opacity:iAmFrom?1:0.5 }}>
-            {s.paidConfirmed?'✓ 已轉帳':`${fromM.displayName} 已轉帳`}
-          </button>
-          <button disabled={!iAmTo||s.receivedConfirmed} onClick={()=>{
-            const ns={...s,receivedConfirmed:true}; setTransferStates(p=>({...p,[sk]:ns}));
-            if(ns.paidConfirmed) settle();
-          }} style={{ flex:1, padding:'9px', borderRadius:10, border:`1px solid ${s.receivedConfirmed?C.green:C.border}`, backgroundColor:s.receivedConfirmed?C.greenSoft:C.bg, color:s.receivedConfirmed?C.green:C.textMuted, fontSize:12, fontWeight:700, cursor:iAmTo?'pointer':'default', opacity:iAmTo?1:0.5 }}>
-            {s.receivedConfirmed?'✓ 已收款':'確認收款'}
-          </button>
-        </div>
+      {done ? (
+        <div style={{ textAlign:'center', fontSize:12, color:C.green, fontWeight:700 }}>✓ 已結清</div>
+      ) : (
+        <button onClick={settle} style={{ width:'100%', padding:'10px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+          ✓ 標記結清
+        </button>
       )}
-      {done && <div style={{ textAlign:'center', fontSize:12, color:C.green, fontWeight:700 }}>✓ 已結清</div>}
-      {!done && <div style={{ textAlign:'center', fontSize:10, color:C.textMuted, marginTop:6 }}>
-        {!s.paidConfirmed&&!s.receivedConfirmed?'雙方確認後自動結清':s.paidConfirmed?`等待 ${toM.displayName} 確認收款`:`等待 ${fromM.displayName} 確認轉帳`}
-      </div>}
     </div>
   );
 });
@@ -1975,7 +1962,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                     r2.payerId === r.payerId &&
                     r2.note === r.note &&
                     r2.currency === r.currency &&
-                    Math.abs((r2.createdAt||0) - (r.createdAt||0)) < 5000
+                    Math.abs((r2.createdAt||0) - (r.createdAt||0)) < 60000
                   );
                   group.forEach(r2 => used.add(r2.id));
                   groups.push(group);
