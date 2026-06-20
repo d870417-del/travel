@@ -139,7 +139,20 @@ function AuthScreen() {
         setMode("login");
         setName(""); setPassword("");
       } else if (mode === "login") {
-        await signInWithEmailAndPassword(auth, email, password);
+        let loginEmail = email.trim();
+        if (!loginEmail.includes('@')) {
+          // 用戶名稱查詢
+          const byUsername = await getDocs(query(collection(db,"users"), where("username","==",loginEmail.toLowerCase())));
+          if (!byUsername.empty) {
+            loginEmail = byUsername.docs[0].data().email;
+          } else {
+            // 嘗試用 displayName 查詢
+            const byName = await getDocs(query(collection(db,"users"), where("displayName","==",loginEmail)));
+            if (!byName.empty) loginEmail = byName.docs[0].data().email;
+            else { setMsg("找不到這個用戶名稱，請改用 email 登入"); setLoading(false); return; }
+          }
+        }
+        await signInWithEmailAndPassword(auth, loginEmail, password);
       } else {
         await sendPasswordResetEmail(auth, email);
         setMsg("重設密碼信已寄出，請檢查你的信箱 📬");
@@ -165,7 +178,7 @@ function AuthScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label style={gs.label}>Email / 用戶名稱</label>
-              <input style={gs.input} type="email" placeholder="Email 或用戶名稱" value={email} onChange={e => setEmail(e.target.value)} />
+              <ImeInput key="auth-email" style={gs.input} placeholder="Email 或用戶名稱" value={email} onChange={v => setEmail(v)} />
             </div>
             <div>
               <label style={gs.label}>密碼</label>
@@ -1263,13 +1276,29 @@ function TripDetailScreen({ user, trip, onBack }) {
           {tripDates.map(d => (
             <div key={d} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
               <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
-              {d!=='待安排' && <button onClick={() => handleDeleteDate(d)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
+              {d!=='待安排' && <button onClick={() => setConfirmDel({title:'刪除日期',message:`確定刪除 ${d} 的日期？日期內的行程不會被刪除。`,fn:()=>handleDeleteDate(d)})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
             </div>
           ))}
         </div>
       </div>
       {/* 行程列表 */}
       <div style={{ padding:16, flex:1 }}>
+        {/* 當天連結的美食 */}
+        {selectedDate!=='待安排' && foodItems.filter(f=>f.linkedDate===selectedDate).length>0 && (
+          <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:'#FEF3E8', borderRadius:14, border:'1px solid #FDDCB0' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#D97706', marginBottom:8 }}>🍜 今天的美食</div>
+            <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
+              {foodItems.filter(f=>f.linkedDate===selectedDate).map(f=>(
+                <button key={f.id} onClick={() => setTab('food')}
+                  style={{ flexShrink:0, padding:'8px 12px', backgroundColor:'#fff', borderRadius:10, border:'1px solid #FDDCB0', cursor:'pointer', textAlign:'left' }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{f.name}</div>
+                  {(f.districts||[f.district]).filter(Boolean).map(d=><div key={d} style={{ fontSize:10, color:'#D97706' }}>📍 {d}</div>)}
+                  {f.foodType && <div style={{ fontSize:10, color:C.textMuted }}>{f.foodType}</div>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {filteredItinerary.length===0 ? (
           <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>尚無行程，點右下角 ＋ 新增</div>
         ) : (
