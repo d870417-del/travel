@@ -2190,8 +2190,6 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
         )}
 
-        )}
-
       </div>
     );
   };
