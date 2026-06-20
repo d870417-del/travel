@@ -1816,17 +1816,51 @@ function TripDetailScreen({ user, trip, onBack }) {
           </select>
           <button onClick={() => setShowManageShopOptions(true)} style={{ fontSize:11, color:C.textMuted, background:'none', border:`1px solid ${C.border}`, borderRadius:8, padding:'7px 10px', cursor:'pointer', fontWeight:600, flexShrink:0 }}>管理選項</button>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <select value={shopFilterCity} onChange={e=>{setShopFilterCity(e.target.value);setShopFilterMall('全部商場');}}
-            style={{ flex:1, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterCity!=='全部城市'?'#BE185D':C.border}`, backgroundColor:shopFilterCity!=='全部城市'?'#FDE8F3':C.bg, color:shopFilterCity!=='全部城市'?'#BE185D':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
-            <option value="全部城市">全部城市</option>
-            {(shopOptions.cities||[]).map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
-          <select value={shopFilterMall} onChange={e=>setShopFilterMall(e.target.value)}
-            style={{ flex:1, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterMall!=='全部商場'?'#BE185D':C.border}`, backgroundColor:shopFilterMall!=='全部商場'?'#FDE8F3':C.bg, color:shopFilterMall!=='全部商場'?'#BE185D':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
-            <option value="全部商場">全部商場</option>
-            {(shopFilterCity!=='全部城市'?(shopOptions.malls||{})[shopFilterCity]||[]:[]).map(m=><option key={m} value={m}>{m}</option>)}
-          </select>
+        {/* 只有多城市才顯示城市篩選，地區和商場依設定顯示 */}
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {/* 城市：多個才顯示 */}
+          {(shopOptions.cities||[]).length > 1 && (
+            <select value={shopFilterCity} onChange={e=>{setShopFilterCity(e.target.value);setShopFilterMall('全部商場');}}
+              style={{ flex:1, minWidth:80, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterCity!=='全部城市'?'#BE185D':C.border}`, backgroundColor:shopFilterCity!=='全部城市'?'#FDE8F3':C.bg, color:shopFilterCity!=='全部城市'?'#BE185D':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
+              <option value="全部城市">全部城市</option>
+              {(shopOptions.cities||[]).map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          {/* 地區篩選 */}
+          {(() => {
+            const cities = shopOptions.cities || [];
+            const locsMap = shopOptions.locations || {};
+            const effectiveCity = cities.length===1 ? cities[0] : (shopFilterCity!=='全部城市'?shopFilterCity:null);
+            const districts = effectiveCity ? (locsMap[effectiveCity]||[]) : cities.flatMap(c=>(locsMap[c]||[]));
+            if (districts.length === 0) return null;
+            return (
+              <select value={shopFilterCity==='全部城市'&&cities.length===1?shopFilterCity:shopFilterCity} onChange={e=>{setShopFilterCity(e.target.value);setShopFilterMall('全部商場');}}
+                style={{ flex:1, minWidth:80, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterCity!=='全部城市'&&districts.includes(shopFilterCity)?'#BE185D':C.border}`, backgroundColor:districts.includes(shopFilterCity)?'#FDE8F3':C.bg, color:districts.includes(shopFilterCity)?'#BE185D':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
+                <option value="全部城市">全部地區</option>
+                {districts.map(d=><option key={d} value={d}>{d}</option>)}
+              </select>
+            );
+          })()}
+          {/* 商場篩選 */}
+          {(() => {
+            const cities = shopOptions.cities || [];
+            const locsMap = shopOptions.locations || {};
+            const mallsMap = shopOptions.malls || {};
+            const effectiveCity = cities.length===1 ? cities[0] : (shopFilterCity!=='全部城市'?shopFilterCity:null);
+            const districts = effectiveCity ? (locsMap[effectiveCity]||[]) : cities.flatMap(c=>(locsMap[c]||[]));
+            const selectedDistrict = districts.includes(shopFilterCity) ? shopFilterCity : null;
+            const malls = selectedDistrict && effectiveCity
+              ? ((mallsMap[effectiveCity]||{})[selectedDistrict]||[])
+              : cities.flatMap(c => districts.flatMap(d => ((mallsMap[c]||{})[d]||[])));
+            if (malls.length === 0) return null;
+            return (
+              <select value={shopFilterMall} onChange={e=>setShopFilterMall(e.target.value)}
+                style={{ flex:1, minWidth:80, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterMall!=='全部商場'?C.purple:C.border}`, backgroundColor:shopFilterMall!=='全部商場'?C.purpleSoft:C.bg, color:shopFilterMall!=='全部商場'?C.purple:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
+                <option value="全部商場">全部商場</option>
+                {malls.map(m=><option key={m} value={m}>{m}</option>)}
+              </select>
+            );
+          })()}
         </div>
         <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>共 {shopFiltered.length} 件・{shopFiltered.filter(i=>i.isBought).length} 件已買</div>
       </div>
