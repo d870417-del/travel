@@ -718,6 +718,97 @@ function JoinTripModal({ user, onClose, onJoined }) {
 // ─── 旅程內頁 ─────────────────────────────────────────────────
 // ─── 確認刪除 Dialog ──────────────────────────────────────────
 // ─── 可展開成員結算卡片 ──────────────────────────────────────
+// ─── 代墊結算可展開卡片 ──────────────────────────────────────
+const ExpandableTransferCard = React.memo(function ExpandableTransferCard({
+  t, idx, fromM, toM, iAmFrom, iAmTo, done, unsettled, SYM, toTWD, C, gs,
+  transferStates, setTransferStates, splitRecords, saveSplitRecords, setSplitRecords, user, members
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const sk = t.from + t.to + t.currency;
+  const s = transferStates[sk] || { paidConfirmed:false, receivedConfirmed:false };
+
+  // 找相關的原始代墊記錄
+  const relatedRecords = (Array.isArray(splitRecords)?splitRecords:[]).filter(r=>
+    ((r.payerId===t.to && r.receiverId===t.from) || (r.payerId===t.from && r.receiverId===t.to)) &&
+    r.currency===t.currency
+  );
+
+  const settle = () => {
+    const n = splitRecords.filter(r=>!(
+      ((r.payerId===t.to&&r.receiverId===t.from)||(r.payerId===t.from&&r.receiverId===t.to))&&r.currency===t.currency
+    ));
+    setSplitRecords(n); saveSplitRecords(n);
+    setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
+  };
+
+  return (
+    <div style={{ ...gs.card, padding:'14px 16px', marginBottom:10, opacity:done?0.5:1, backgroundColor:iAmTo?C.greenSoft:iAmFrom?C.dangerSoft:C.surface }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:14, fontWeight:700 }}>{iAmFrom?'我':fromM.displayName} → {iAmTo?'我':toM.displayName}</div>
+          <div style={{ fontSize:18, fontWeight:800, color:iAmTo?C.green:iAmFrom?C.danger:C.text, marginTop:4 }}>
+            {SYM[t.currency]||''}{t.amount.toLocaleString()} {t.currency}
+            <span style={{ fontSize:11, color:C.textMuted, fontWeight:400, marginLeft:6 }}>≈ NT${toTWD(t.amount,t.currency).toLocaleString()}</span>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+          {(iAmFrom||iAmTo)&&!done&&(
+            <div style={{ fontSize:11, fontWeight:700, color:iAmTo?C.green:C.danger, padding:'5px 10px', borderRadius:8, border:`1px solid ${iAmTo?C.green:C.danger}33` }}>
+              {iAmTo?'待收款':'待還款'}
+            </div>
+          )}
+          {relatedRecords.length>0 && (
+            <button onClick={()=>setExpanded(e=>!e)}
+              style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer' }}>
+              明細 {expanded?'▲':'▼'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 展開明細 */}
+      {expanded && relatedRecords.length>0 && (
+        <div style={{ backgroundColor:'rgba(255,255,255,0.6)', borderRadius:10, padding:'10px 12px', marginBottom:10 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:C.textMuted, marginBottom:8 }}>代墊明細</div>
+          {relatedRecords.map((r,ri)=>(
+            <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom:ri<relatedRecords.length-1?`1px solid ${C.border}`:'none' }}>
+              <div style={{ width:6, height:6, borderRadius:'50%', backgroundColor:C.purple, flexShrink:0 }} />
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:C.text }}>{r.note||'代墊'}</div>
+                <div style={{ fontSize:10, color:C.textMuted }}>
+                  {members.find(m=>m.uid===r.payerId)?.displayName||'?'} → {members.find(m=>m.uid===r.receiverId)?.displayName||'?'}
+                </div>
+              </div>
+              <div style={{ fontSize:12, fontWeight:800, color:C.purple }}>{SYM[r.currency]||''}{r.amount.toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!done && (
+        <div style={{ display:'flex', gap:8 }}>
+          <button disabled={!iAmFrom||s.paidConfirmed} onClick={()=>{
+            const ns={...s,paidConfirmed:true}; setTransferStates(p=>({...p,[sk]:ns}));
+            if(ns.receivedConfirmed) settle();
+          }} style={{ flex:1, padding:'9px', borderRadius:10, border:`1px solid ${s.paidConfirmed?C.green:C.border}`, backgroundColor:s.paidConfirmed?C.greenSoft:C.bg, color:s.paidConfirmed?C.green:C.textMuted, fontSize:12, fontWeight:700, cursor:iAmFrom?'pointer':'default', opacity:iAmFrom?1:0.5 }}>
+            {s.paidConfirmed?'✓ 已轉帳':`${fromM.displayName} 已轉帳`}
+          </button>
+          <button disabled={!iAmTo||s.receivedConfirmed} onClick={()=>{
+            const ns={...s,receivedConfirmed:true}; setTransferStates(p=>({...p,[sk]:ns}));
+            if(ns.paidConfirmed) settle();
+          }} style={{ flex:1, padding:'9px', borderRadius:10, border:`1px solid ${s.receivedConfirmed?C.green:C.border}`, backgroundColor:s.receivedConfirmed?C.greenSoft:C.bg, color:s.receivedConfirmed?C.green:C.textMuted, fontSize:12, fontWeight:700, cursor:iAmTo?'pointer':'default', opacity:iAmTo?1:0.5 }}>
+            {s.receivedConfirmed?'✓ 已收款':'確認收款'}
+          </button>
+        </div>
+      )}
+      {done && <div style={{ textAlign:'center', fontSize:12, color:C.green, fontWeight:700 }}>✓ 已結清</div>}
+      {!done && <div style={{ textAlign:'center', fontSize:10, color:C.textMuted, marginTop:6 }}>
+        {!s.paidConfirmed&&!s.receivedConfirmed?'雙方確認後自動結清':s.paidConfirmed?`等待 ${toM.displayName} 確認收款`:`等待 ${fromM.displayName} 確認轉帳`}
+      </div>}
+    </div>
+  );
+});
+
 const ExpandableMemberCard = React.memo(function ExpandableMemberCard({ m, bal, hasBal, detail, SYM, effRates, toTWD, isMe }) {
   const [expanded, setExpanded] = React.useState(false);
   const mc = [C.blue, C.green, C.purple, '#E0875A'][(m.displayName||'').charCodeAt(0)%4];
@@ -1807,8 +1898,38 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 帳目列表 */}
         <div style={{ padding:16, flex:1 }}>
+          {/* 個人帳：顯示公費中分攤到我的項目 */}
+          {!isShared && currentDate && walletItems.filter(w=>w.date===currentDate).length>0 && (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase', marginBottom:8 }}>📊 公費分攤到我（{currentDate}）</div>
+              {walletItems.filter(w=>w.date===currentDate).map(w=>{
+                const allUids=members.map(m=>m.uid);
+                const ids = w.type==='存入'?(w.contributorIds||allUids):(w.forMemberIds||allUids);
+                if(!ids.includes(user.uid)) return null;
+                const n=ids.length||1;
+                const total=Number(w.amount)||0;
+                const per=Math.floor(total/n);
+                const myIdx=ids.indexOf(user.uid);
+                const rem=total-per*n;
+                const myAmt=per+(myIdx>=0&&myIdx<rem?1:0);
+                const isIn=w.type==='存入';
+                return (
+                  <div key={w.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', backgroundColor:isIn?C.greenSoft:C.purpleSoft, borderRadius:10, marginBottom:6, border:`1px solid ${isIn?C.green:C.purple}22` }}>
+                    <div style={{ width:8, height:8, borderRadius:'50%', backgroundColor:isIn?C.green:C.purple, flexShrink:0 }} />
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.text }}>{w.name}</div>
+                      <div style={{ fontSize:10, color:C.textMuted }}>{isIn?'我存入的':'分攤支出'} · 共 {n} 人</div>
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:800, color:isIn?C.green:C.purple }}>
+                      {isIn?'+':'-'}{SYM[w.currency]||''}{myAmt.toLocaleString()} {w.currency}
+                    </div>
+                  </div>
+                );
+              }).filter(Boolean)}
+            </div>
+          )}
           {filteredItems.length===0 ? (
-            <div style={{ textAlign:'center', padding:'40px 20px', color:C.textMuted, fontSize:13 }}>{currentDate?`${currentDate} 尚無帳目`:'尚無帳目，點右下角 ＋ 新增'}</div>
+            <div style={{ textAlign:'center', padding:'20px 20px', color:C.textMuted, fontSize:13 }}>{currentDate?`${currentDate} 尚無個人帳目`:'尚無帳目，點右下角 ＋ 新增'}</div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {filteredItems.map(item=>{
@@ -1936,29 +2057,8 @@ function TripDetailScreen({ user, trip, onBack }) {
                 const done=s.paidConfirmed&&s.receivedConfirmed;
                 const settle=()=>{ const n=splitRecords.filter(r=>!((r.payerId===t.to&&r.receiverId===t.from)||(r.payerId===t.from&&r.receiverId===t.to))&&r.currency===t.currency); setSplitRecords(n);saveSplitRecords(n); setTransferStates(p=>{const np={...p};delete np[sk];return np;}); };
                 return (
-                  <div key={idx} style={{ ...gs.card,padding:'14px 16px',marginBottom:10,opacity:done?0.5:1,backgroundColor:iAmTo?C.greenSoft:iAmFrom?C.dangerSoft:C.surface }}>
-                    <div style={{ display:'flex',alignItems:'center',gap:10,marginBottom:10 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:14,fontWeight:700 }}>{iAmFrom?'我':fromM.displayName} → {iAmTo?'我':toM.displayName}</div>
-                        <div style={{ fontSize:18,fontWeight:800,color:iAmTo?C.green:iAmFrom?C.danger:C.text,marginTop:4 }}>{SYM[t.currency]||''}{t.amount.toLocaleString()} {t.currency}<span style={{ fontSize:11,color:C.textMuted,fontWeight:400,marginLeft:6 }}>≈ NT${toTWD(t.amount,t.currency).toLocaleString()}</span></div>
-                      </div>
-                      {(iAmFrom||iAmTo)&&!done&&<div style={{ fontSize:11,fontWeight:700,color:iAmTo?C.green:C.danger,padding:'5px 10px',borderRadius:8,border:`1px solid ${iAmTo?C.green:C.danger}33` }}>{iAmTo?'待收款':'待還款'}</div>}
-                    </div>
-                    {!done&&(
-                      <div style={{ display:'flex',gap:8 }}>
-                        <button disabled={!iAmFrom||s.paidConfirmed} onClick={()=>{ const ns={...s,paidConfirmed:true}; setTransferStates(p=>({...p,[sk]:ns})); if(ns.receivedConfirmed)settle(); }}
-                          style={{ flex:1,padding:'9px',borderRadius:10,border:`1px solid ${s.paidConfirmed?C.green:C.border}`,backgroundColor:s.paidConfirmed?C.greenSoft:C.bg,color:s.paidConfirmed?C.green:C.textMuted,fontSize:12,fontWeight:700,cursor:iAmFrom?'pointer':'default',opacity:iAmFrom?1:0.5 }}>
-                          {s.paidConfirmed?'✓ 已轉帳':`${fromM.displayName} 已轉帳`}
-                        </button>
-                        <button disabled={!iAmTo||s.receivedConfirmed} onClick={()=>{ const ns={...s,receivedConfirmed:true}; setTransferStates(p=>({...p,[sk]:ns})); if(ns.paidConfirmed)settle(); }}
-                          style={{ flex:1,padding:'9px',borderRadius:10,border:`1px solid ${s.receivedConfirmed?C.green:C.border}`,backgroundColor:s.receivedConfirmed?C.greenSoft:C.bg,color:s.receivedConfirmed?C.green:C.textMuted,fontSize:12,fontWeight:700,cursor:iAmTo?'pointer':'default',opacity:iAmTo?1:0.5 }}>
-                          {s.receivedConfirmed?'✓ 已收款':'確認收款'}
-                        </button>
-                      </div>
-                    )}
-                    {done&&<div style={{ textAlign:'center',fontSize:12,color:C.green,fontWeight:700 }}>✓ 已結清</div>}
-                    {!done&&<div style={{ textAlign:'center',fontSize:10,color:C.textMuted,marginTop:6 }}>{!s.paidConfirmed&&!s.receivedConfirmed?'雙方確認後自動結清':s.paidConfirmed?`等待 ${toM.displayName} 確認收款`:`等待 ${fromM.displayName} 確認轉帳`}</div>}
-                  </div>
+                  <ExpandableTransferCard key={idx} t={t} idx={idx} fromM={fromM} toM={toM} iAmFrom={iAmFrom} iAmTo={iAmTo} done={done} unsettled={unsettled} SYM={SYM} toTWD={toTWD} C={C} gs={gs} transferStates={transferStates} setTransferStates={setTransferStates} splitRecords={splitRecords} saveSplitRecords={saveSplitRecords} setSplitRecords={setSplitRecords} user={user} members={members} />
+
                 );
               })}
               <div style={{ marginTop:8 }}>
