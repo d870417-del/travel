@@ -259,6 +259,7 @@ function TripListScreen({ user, onEnterTrip }) {
   const [trips, setTrips] = useState([]);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [tripToDelete, setTripToDelete] = useState(null); // { trip, isAdmin }
+  const [tripToEdit, setTripToEdit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -361,10 +362,12 @@ function TripListScreen({ user, onEnterTrip }) {
                     </div>
                     <div style={{ color: color, fontSize: 18, fontWeight: 700 }}>›</div>
                   </button>
-                  <button onClick={() => {
-                    const isAdmin = trip.createdBy === user.uid;
-                    setTripToDelete({ trip, isAdmin });
-                  }} style={{ background:"none", border:"none", color:C.textMuted, fontSize:18, cursor:"pointer", padding:"4px 6px", opacity:0.5, flexShrink:0 }}>×</button>
+                  <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+                    <button onClick={() => setTripToEdit(trip)}
+                      style={{ background:"none", border:"none", color:C.textMuted, fontSize:15, cursor:"pointer", padding:"4px 6px", opacity:0.6 }}>✏️</button>
+                    <button onClick={() => { const isAdmin = trip.createdBy === user.uid; setTripToDelete({ trip, isAdmin }); }}
+                      style={{ background:"none", border:"none", color:C.textMuted, fontSize:16, cursor:"pointer", padding:"4px 6px", opacity:0.5 }}>×</button>
+                  </div>
                 </div>
               );
             })}
@@ -407,6 +410,12 @@ function TripListScreen({ user, onEnterTrip }) {
             </div>
           </div>
         </div>
+      )}
+      {tripToEdit && (
+        <EditTripModal trip={tripToEdit} onClose={() => setTripToEdit(null)} onSaved={(updated) => {
+          setTrips(p => p.map(t => t.id===updated.id ? {...t,...updated} : t));
+          setTripToEdit(null);
+        }} />
       )}
       {tripToDelete && (
         <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:24, backgroundColor:'rgba(45,42,36,0.5)' }}>
@@ -670,6 +679,136 @@ function JoinTripModal({ user, onClose, onJoined }) {
 
 // ─── 旅程內頁 ─────────────────────────────────────────────────
 // ─── 確認刪除 Dialog ──────────────────────────────────────────
+// ─── 編輯旅程 Modal ──────────────────────────────────────────
+function EditTripModal({ trip, onClose, onSaved }) {
+  const [name, setName] = useState(trip.name || '');
+  const [destinations, setDestinations] = useState(trip.destinations || (trip.destination ? [trip.destination] : []));
+  const [destInput, setDestInput] = useState('');
+  const [emoji, setEmoji] = useState(trip.emoji || '✈️');
+  const [colorIdx, setColorIdx] = useState(TRIP_COLORS.indexOf(trip.color) >= 0 ? TRIP_COLORS.indexOf(trip.color) : 0);
+  const [startDate, setStartDate] = useState(trip.startDate || '');
+  const [endDate, setEndDate] = useState(trip.endDate || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const tripColor = TRIP_COLORS[colorIdx];
+
+  function addDest() {
+    const v = destInput.trim();
+    if (!v || destinations.includes(v)) return;
+    setDestinations(p => [...p, v]);
+    setDestInput('');
+  }
+
+  async function handleSave() {
+    if (!name.trim()) { setError('請輸入旅程名稱'); return; }
+    if (startDate && endDate && endDate < startDate) { setError('結束日期不能早於開始日期'); return; }
+    setLoading(true);
+    try {
+      const updated = {
+        name: name.trim(),
+        destinations,
+        destination: destinations[0] || '',
+        emoji,
+        color: TRIP_COLORS[colorIdx],
+        startDate: startDate || null,
+        endDate: endDate || null,
+      };
+      await updateDoc(doc(db, "trips", trip.id), updated);
+      // 同步更新 foodOptions 和 shopOptions 的城市
+      try {
+        const foodSnap = await getDoc(doc(db,"tripData",`${trip.id}_foodOptions`));
+        if (foodSnap.exists()) {
+          const fd = foodSnap.data();
+          await setDoc(doc(db,"tripData",`${trip.id}_foodOptions`), {...fd, cities:destinations});
+        } else if(destinations.length>0) {
+          await setDoc(doc(db,"tripData",`${trip.id}_foodOptions`), { cities:destinations, districts:{}, foodTypes:['必吃','咖啡甜點','居酒屋','拉麵','燒肉','海鮮','其他'] });
+        }
+        const shopSnap = await getDoc(doc(db,"tripData",`${trip.id}_shopOptions`));
+        if (shopSnap.exists()) {
+          const sd = shopSnap.data();
+          await setDoc(doc(db,"tripData",`${trip.id}_shopOptions`), {...sd, cities:destinations});
+        }
+      } catch(e) {}
+      onSaved({ ...trip, ...updated });
+    } catch(e) { setError('儲存失敗，請再試一次'); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
+      <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div style={{ fontSize:17, fontWeight:800 }}>編輯旅程</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
+        </div>
+
+        {/* Emoji */}
+        <label style={gs.label}>旅程圖示</label>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+          {TRIP_EMOJIS.map(e => (
+            <button key={e} onClick={() => setEmoji(e)}
+              style={{ width:44, height:44, borderRadius:11, fontSize:22, cursor:'pointer', border:`2px solid ${emoji===e?tripColor:C.border}`, backgroundColor:emoji===e?tripColor+'18':C.bg }}>
+              {e}
+            </button>
+          ))}
+        </div>
+
+        {/* 顏色 */}
+        <label style={gs.label}>顏色</label>
+        <div style={{ display:'flex', gap:10, marginBottom:18 }}>
+          {TRIP_COLORS.map((c,i) => (
+            <button key={c} onClick={() => setColorIdx(i)}
+              style={{ width:30, height:30, borderRadius:'50%', cursor:'pointer', backgroundColor:c, border:`3px solid ${colorIdx===i?C.text:'transparent'}` }} />
+          ))}
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div>
+            <label style={gs.label}>旅程名稱 *</label>
+            <ImeInput key="edit-trip-name" style={gs.input} placeholder="例：東京五天四夜" value={name} onChange={v=>setName(v)} />
+          </div>
+          <div>
+            <label style={gs.label}>旅遊地點（可多個）</label>
+            {destinations.length > 0 && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+                {destinations.map(d => (
+                  <div key={d} style={{ display:'flex', alignItems:'center', gap:4, padding:'5px 12px', backgroundColor:tripColor+'18', border:`1.5px solid ${tripColor}44`, borderRadius:20 }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:tripColor }}>📍 {d}</span>
+                    <button onClick={() => setDestinations(p=>p.filter(x=>x!==d))}
+                      style={{ background:'none', border:'none', color:tripColor, fontSize:15, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display:'flex', gap:8 }}>
+              <ImeInput key="edit-dest-input" style={{ ...gs.input, flex:1 }} placeholder="例：福岡、大阪" value={destInput} onChange={v=>setDestInput(v)} />
+              <button onClick={addDest} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:tripColor, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
+            </div>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div>
+              <label style={gs.label}>出發日期</label>
+              <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); if(endDate&&e.target.value>endDate)setEndDate(''); }} style={gs.input} />
+            </div>
+            <div>
+              <label style={gs.label}>回程日期</label>
+              <input type="date" value={endDate} min={startDate} onChange={e=>setEndDate(e.target.value)} style={gs.input} />
+            </div>
+          </div>
+        </div>
+
+        {error && <div style={{ marginTop:10, color:C.danger, fontSize:13 }}>{error}</div>}
+
+        <button onClick={handleSave} disabled={loading}
+          style={{ width:'100%', border:'none', borderRadius:13, padding:'14px', fontSize:15, fontWeight:700, cursor:'pointer', marginTop:20, background:`linear-gradient(135deg,${tripColor},${C.purple})`, color:'#fff', opacity:loading?0.7:1 }}>
+          {loading ? '儲存中...' : '儲存變更'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ImeInput：解決 iOS 注音輸入消失問題
 // 完全 uncontrolled，避免 React re-render 收起鍵盤
 const ImeInput = React.memo(function ImeInput({ value, onChange, style, placeholder, type, autoComplete, multiline, rows }) {
@@ -812,6 +951,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [foodSelectedType, setFoodSelectedType] = useState('全部食物');
   const [showManageFoodOptions, setShowManageFoodOptions] = useState(false);
   const [shoppingModal, setShoppingModal] = useState({ open:false, data:null });
+  const [shopTempPhotos, setShopTempPhotos] = useState([]);
   const [shopFilterCity, setShopFilterCity] = useState('全部城市');
   const [shopFilterMall, setShopFilterMall] = useState('全部商場');
   const [shopFilterMember, setShopFilterMember] = useState('all');
@@ -891,13 +1031,13 @@ function TripDetailScreen({ user, trip, onBack }) {
       const s = await getDoc(doc(db,"tripData",`${trip.id}_shopOptions`));
       if (s.exists()) {
         const data = s.data();
-        setShopOptions(prev => ({
+        setShopOptions({
           cities: tripCities,
-          malls: data.malls || {},
-          locations: data.locations || {},
-        }));
+          locations: data.locations || {}, // {city: [district, ...]}
+          malls: data.malls || {},          // {city: {district: [mall, ...]}}
+        });
       } else {
-        setShopOptions(prev => ({ ...prev, cities: tripCities }));
+        setShopOptions({ cities: tripCities, locations: {}, malls: {} });
       }
     } catch(e) { console.error(e); }
   }
@@ -968,8 +1108,8 @@ function TripDetailScreen({ user, trip, onBack }) {
     .sort((a,b)=>selectedDate==='待安排'?(a.createdAt||0)-(b.createdAt||0):(a.time||'').localeCompare(b.time||''));
 
   const shopFiltered = shoppingItems.filter(item => {
-    const shopCities = shopOptions.cities || [];
-    if (shopCities.length > 1 && shopFilterCity!=='全部城市' && item.city!==shopFilterCity) return false;
+    // shopFilterCity 現在存的是地區名稱
+    if (shopFilterCity!=='全部城市' && item.district!==shopFilterCity) return false;
     if (shopFilterMall!=='全部商場' && item.mall!==shopFilterMall) return false;
     if (shopFilterMember!=='all' && item.addedById!==shopFilterMember) return false;
     return true;
@@ -1683,12 +1823,12 @@ function TripDetailScreen({ user, trip, onBack }) {
                 <div key={item.id} style={{ ...gs.card, padding:'14px 16px', opacity:item.isBought?0.65:1 }}>
                   <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:8 }}>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap', flex:1 }}>
-                      {item.city && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:11, fontWeight:700 }}>📍 {item.city}</span>}
-                      {item.mall && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:11, fontWeight:700 }}>🏪 {item.mall}</span>}
+                      {item.district && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#FDE8F3', color:'#BE185D', border:'1px solid #F9B8DA', fontSize:11, fontWeight:700 }}>📍 {item.district}</span>}
+                      {item.mall && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.purpleSoft, color:C.purple, fontSize:11, fontWeight:700 }}>🏪 {item.mall}</span>}
                     </div>
                     {isMine && (
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                        <button onClick={() => setShoppingModal({open:true,data:item})} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
+                        <button onClick={() => { setShoppingModal({open:true,data:item}); setShopTempPhotos(item.photos||[]); }} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
                         <button onClick={() => setConfirmDel({title:'刪除',message:`確定刪除「${item.name}」？`,fn:()=>{const n=shoppingItems.filter(i=>i.id!==item.id);setShoppingItems(n);saveShopping(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>×</button>
                       </div>
                     )}
@@ -1705,9 +1845,19 @@ function TripDetailScreen({ user, trip, onBack }) {
                       {item.note && <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{item.note}</div>}
                     </div>
                   </div>
+                  {item.photos?.length > 0 && (
+                    <div style={{ display:'flex', gap:6, overflowX:'auto', marginTop:8, marginBottom:4 }}>
+                      {item.photos.map((p,pi) => <img key={pi} src={p} style={{ width:56, height:56, objectFit:'cover', borderRadius:8, flexShrink:0, border:`1px solid ${C.border}` }} alt="shop" />)}
+                    </div>
+                  )}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
                     <div style={{ fontSize:10, color:C.textMuted }}>{item.addedByName||'成員'} 許願</div>
-                    {item.mapUrl && <button onClick={() => window.open(item.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:'1px solid #F9B8DA', backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺</button>}
+                    <div style={{ display:'flex', gap:6 }}>
+                      {(item.branches||[]).filter(b=>b.mapUrl).map((b,bi)=>(
+                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:'1px solid #F9B8DA', backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name}</button>
+                      ))}
+                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:'1px solid #F9B8DA', backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺</button>}
+                    </div>
                   </div>
                 </div>
               );
@@ -2147,43 +2297,180 @@ function TripDetailScreen({ user, trip, onBack }) {
   };
 
   // 購物 Modal
-  const ShoppingModal = () => !shoppingModal.open ? null : (
-    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
-      <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'90vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
-          <div style={{ fontSize:16, fontWeight:800 }}>{shoppingModal.data?.id?'編輯購物':'新增購物'}</div>
-          <button onClick={() => setShoppingModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
-        </div>
-        {(shopOptions.cities||[]).length > 1 && (
-          <div style={{ marginBottom:12 }}><label style={gs.label}>🏙️ 城市</label>
-            <select value={shoppingModal.data?.city||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,city:e.target.value,mall:''}}))} style={{ ...gs.input, cursor:'pointer' }}>
-              <option value="">無特定城市</option>
-              {(shopOptions.cities||[]).map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
+  const ShoppingModal = () => {
+    if (!shoppingModal.open) return null;
+    const d = shoppingModal.data || {};
+    const cities = shopOptions.cities || [];
+    const locationsMap = shopOptions.locations || {};
+    const mallsMap = shopOptions.malls || {};
+    const activeCity = d.city || (cities.length===1?cities[0]:'');
+    const cityDistricts = activeCity ? (locationsMap[activeCity]||[]) : [];
+    const districtMalls = (activeCity && d.district) ? ((mallsMap[activeCity]||{})[d.district]||[]) : [];
+    const branches = d.branches || [];
+
+    const toggleDistrict = (dist) => {
+      const isRemoving = d.district === dist;
+      setShoppingModal(p => ({...p, data:{...p.data,
+        district: isRemoving ? '' : dist,
+        mall: '',
+        branches: isRemoving ? [] : [{ name:dist, mapUrl:'' }],
+      }}));
+    };
+
+    return (
+      <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
+        <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'92vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+            <div style={{ fontSize:16, fontWeight:800 }}>{d.id?'編輯購物':'新增購物'}</div>
+            <button onClick={() => { setShoppingModal({open:false,data:null}); setShopTempPhotos([]); }} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
           </div>
-        )}
-        <div style={{ marginBottom:12 }}><label style={gs.label}>🏪 商場</label>
-          <select value={shoppingModal.data?.mall||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,mall:e.target.value}}))} style={{ ...gs.input, cursor:'pointer' }}>
-            <option value="">無特定商場</option>
-            {((shopOptions.malls||{})[shoppingModal.data?.city]||[]).map(m=><option key={m} value={m}>{m}</option>)}
-          </select>
+
+          {/* 城市（多城市才顯示）*/}
+          {cities.length > 1 && (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>🏙️ 城市</label>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {cities.map(city => (
+                  <button key={city} type="button" onClick={() => setShoppingModal(p=>({...p,data:{...p.data,city,district:'',mall:'',branches:[]}}))}
+                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${activeCity===city?'#BE185D':C.border}`, backgroundColor:activeCity===city?'#BE185D':C.bg, color:activeCity===city?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                    {city}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 地區 */}
+          {cityDistricts.length > 0 && (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>📍 地區</label>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {cityDistricts.map(dist => (
+                  <button key={dist} type="button" onClick={() => toggleDistrict(dist)}
+                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.district===dist?'#BE185D':C.border}`, backgroundColor:d.district===dist?'#FDE8F3':C.bg, color:d.district===dist?'#BE185D':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                    📍 {dist}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 商場 */}
+          {districtMalls.length > 0 && (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>🏪 商場</label>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {districtMalls.map(mall => (
+                  <button key={mall} type="button" onClick={() => setShoppingModal(p=>({...p,data:{...p.data,mall:p.data.mall===mall?'':mall}}))}
+                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.mall===mall?C.purple:C.border}`, backgroundColor:d.mall===mall?C.purpleSoft:C.bg, color:d.mall===mall?C.purple:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                    {mall}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 商品名稱 */}
+          <div style={{ marginBottom:14 }}>
+            <label style={gs.label}>🛍️ 商品名稱 *</label>
+            <ImeInput key="shop-name" style={gs.input} placeholder="例：Matin Kim 外套、蜂蜜奶油杏仁" value={d.name||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,name:v}}))} />
+          </div>
+
+          {/* 地圖連結（依地區）*/}
+          {branches.length > 0 ? (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>🗺 分店 / 地圖連結</label>
+              {branches.map((b,bi) => (
+                <div key={bi} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
+                  <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
+                  <input style={{ ...gs.input, flex:1, padding:'10px 12px', fontSize:14 }} placeholder="貼上 Google Maps 連結"
+                    value={b.mapUrl||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:e.target.value}:x)}}))} />
+                </div>
+              ))}
+              <button type="button" onClick={() => setShoppingModal(p=>({...p,data:{...p.data,branches:[...branches,{name:'',mapUrl:''}]}}))}
+                style={{ fontSize:12, color:'#BE185D', fontWeight:700, background:'none', border:'none', cursor:'pointer' }}>＋ 新增分店</button>
+            </div>
+          ) : (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>🗺 地圖連結（選填）</label>
+              <input style={gs.input} placeholder="貼上 Google Maps 連結" value={d.mapUrl||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} />
+            </div>
+          )}
+
+          {/* 備註 */}
+          <div style={{ marginBottom:14 }}>
+            <label style={gs.label}>💡 備註（尺寸、顏色、幫誰帶）</label>
+            <ImeInput key="shop-note" multiline style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} placeholder="例：深藍色 M 號、幫媽媽帶" value={d.note||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,note:v}}))} rows={2} />
+          </div>
+
+          {/* 照片 */}
+          <div style={{ marginBottom:18 }}>
+            <label style={gs.label}>📷 商品照片（最多 5 張）</label>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {shopTempPhotos.map((url,i) => (
+                <div key={i} style={{ position:'relative', width:64, height:64, borderRadius:10, overflow:'hidden', border:`1px solid ${C.border}` }}>
+                  <img src={url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt="tmp" />
+                  <button onClick={() => setShopTempPhotos(p=>p.filter((_,j)=>j!==i))}
+                    style={{ position:'absolute', top:2, right:2, width:18, height:18, borderRadius:4, backgroundColor:'rgba(220,50,50,0.9)', border:'none', color:'#fff', fontSize:12, cursor:'pointer' }}>×</button>
+                </div>
+              ))}
+              {shopTempPhotos.length < 5 && (
+                <button onClick={() => document.getElementById('shop-photo-input').click()}
+                  style={{ width:64, height:64, borderRadius:10, border:`1.5px dashed ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:22, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>📷</button>
+              )}
+            </div>
+            <input type="file" id="shop-photo-input" style={{ display:'none' }} multiple accept="image/*" onChange={e => {
+              Array.from(e.target.files).forEach(file => {
+                const r = new FileReader();
+                r.onloadend = () => {
+                  const img = new Image();
+                  img.src = r.result;
+                  img.onload = () => {
+                    const c = document.createElement('canvas');
+                    let w=img.width, h=img.height, max=600;
+                    if(w>h){if(w>max){h=h*max/w;w=max;}}else{if(h>max){w=w*max/h;h=max;}}
+                    c.width=w; c.height=h;
+                    c.getContext('2d').drawImage(img,0,0,w,h);
+                    setShopTempPhotos(p => p.length<5 ? [...p, c.toDataURL('image/jpeg',0.6)] : p);
+                  };
+                };
+                r.readAsDataURL(file);
+              });
+            }} />
+          </div>
+
+          <button onClick={() => {
+            if(!d.name?.trim()) return;
+            const fd = { ...d,
+              city: activeCity,
+              photos: shopTempPhotos,
+              isBought: d.isBought||false,
+              addedByName: user.displayName||user.email,
+              addedById: user.uid,
+              createdAt: d.createdAt||Date.now()
+            };
+            const n = d.id ? shoppingItems.map(i=>i.id===d.id?fd:i) : [...shoppingItems,{...fd,id:Date.now()}];
+            setShoppingItems(n); saveShopping(n);
+            setShoppingModal({open:false,data:null}); setShopTempPhotos([]);
+          }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff' }}>確認儲存</button>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>🛍️ 商品名稱 *</label><ImeInput key="shop-name" style={gs.input} placeholder="例：Matin Kim 外套" value={shoppingModal.data?.name||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>🌐 地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={shoppingModal.data?.mapUrl||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
-        <div style={{ marginBottom:16 }}><label style={gs.label}>💡 備註</label><ImeInput key="shop-note" multiline value={shoppingModal.data?.note||''} onChange={v=>setShoppingModal(p=>({...p,data:{...p.data,note:v}}))} rows={2} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
-        <button onClick={() => { if(!shoppingModal.data?.name?.trim())return; const fd={...shoppingModal.data,isBought:shoppingModal.data.isBought||false,addedByName:user.displayName||user.email,addedById:user.uid,createdAt:shoppingModal.data.createdAt||Date.now()}; const n=shoppingModal.data.id?shoppingItems.map(i=>i.id===shoppingModal.data.id?fd:i):[...shoppingItems,{...fd,id:Date.now()}]; setShoppingItems(n);saveShopping(n);setShoppingModal({open:false,data:null}); }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff' }}>確認儲存</button>
       </div>
-    </div>
-  );
+    );
+  };
 
   // 管理購物選項 Modal
   const ManageShopOptionsModal = () => {
+    const [newDistrict, setNewDistrict] = useState('');
+    const [newDistrictCity, setNewDistrictCity] = useState('');
     const [newMall, setNewMall] = useState('');
     const [newMallCity, setNewMallCity] = useState('');
+    const [newMallDistrict, setNewMallDistrict] = useState('');
     if (!showManageShopOptions) return null;
     const cities = shopOptions.cities || [];
+    const locationsMap = shopOptions.locations || {};
     const mallsMap = shopOptions.malls || {};
     const updateOpts = (o) => { setShopOptions(o); saveShopOptions(o); };
+    const allDistricts = cities.flatMap(c => (locationsMap[c]||[]).map(d => ({city:c, district:d})));
 
     return (
       <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:300 }}>
@@ -2193,36 +2480,75 @@ function TripDetailScreen({ user, trip, onBack }) {
             <button onClick={() => setShowManageShopOptions(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
           </div>
 
-          {/* 商場（依旅程城市）*/}
+          {/* 地區 */}
           <div style={{ marginBottom:20 }}>
-            <label style={gs.label}>🏪 商場 / 百貨</label>
+            <label style={gs.label}>📍 地區</label>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
-              {cities.flatMap(city => (mallsMap[city]||[]).map(m => (
-                <div key={`${city}-${m}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#FDE8F3', border:'1px solid #F9B8DA', borderRadius:20 }}>
-                  {cities.length > 1 && <span style={{ fontSize:11, color:'#BE185D', fontWeight:600, opacity:0.7 }}>{city} · </span>}
-                  <span style={{ fontSize:13, fontWeight:700, color:'#BE185D' }}>{m}</span>
-                  <button onClick={() => updateOpts({...shopOptions, malls:{...mallsMap,[city]:(mallsMap[city]||[]).filter(x=>x!==m)}})}
-                    style={{ background:'none', border:'none', color:'#BE185D', fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
+              {allDistricts.map(({city,district}) => (
+                <div key={`${city}-${district}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#FDE8F3', border:'1px solid #F9B8DA', borderRadius:20 }}>
+                  {cities.length>1 && <span style={{ fontSize:11, color:'#BE185D', opacity:0.7 }}>{city} · </span>}
+                  <span style={{ fontSize:13, fontWeight:700, color:'#BE185D' }}>{district}</span>
+                  <button onClick={() => {
+                    const newLocs = {...locationsMap, [city]:(locationsMap[city]||[]).filter(x=>x!==district)};
+                    const newMalls = {...mallsMap};
+                    if(newMalls[city]) delete newMalls[city][district];
+                    updateOpts({...shopOptions, locations:newLocs, malls:newMalls});
+                  }} style={{ background:'none', border:'none', color:'#BE185D', fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
                 </div>
-              )))}
-              {cities.flatMap(c=>(mallsMap[c]||[])).length===0 && <div style={{ fontSize:12, color:C.textMuted }}>尚未新增商場</div>}
+              ))}
+              {allDistricts.length===0 && <div style={{ fontSize:12, color:C.textMuted }}>尚未新增地區</div>}
             </div>
             <div style={{ display:'flex', gap:8 }}>
-              {cities.length > 1 && (
-                <select value={newMallCity} onChange={e=>setNewMallCity(e.target.value)}
+              {cities.length>1 && (
+                <select value={newDistrictCity} onChange={e=>setNewDistrictCity(e.target.value)}
                   style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px', fontSize:14 }}>
                   <option value="">選城市</option>
                   {cities.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
               )}
-              <ImeInput key="manage-shop-mall" style={{ ...gs.input, flex:1 }} placeholder="例：天神地下街、博多マルイ" value={newMall} onChange={v=>setNewMall(v)} />
+              <ImeInput key="manage-shop-district" style={{ ...gs.input, flex:1 }} placeholder="例：天神、博多" value={newDistrict} onChange={v=>setNewDistrict(v)} />
               <button onClick={() => {
-                if(!newMall.trim()) return;
-                const city = cities.length===1 ? cities[0] : (newMallCity || cities[0]);
+                if(!newDistrict.trim()) return;
+                const city = cities.length===1 ? cities[0] : (newDistrictCity||cities[0]);
                 if(!city) return;
-                updateOpts({...shopOptions, malls:{...mallsMap,[city]:[...(mallsMap[city]||[]),newMall.trim()]}});
-                setNewMall('');
+                updateOpts({...shopOptions, locations:{...locationsMap,[city]:[...(locationsMap[city]||[]),newDistrict.trim()]}});
+                setNewDistrict('');
               }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
+            </div>
+          </div>
+
+          {/* 商場（依地區）*/}
+          <div style={{ marginBottom:20 }}>
+            <label style={gs.label}>🏪 商場 / 百貨</label>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+              {allDistricts.flatMap(({city,district}) => ((mallsMap[city]||{})[district]||[]).map(m => (
+                <div key={`${city}-${district}-${m}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:C.purpleSoft, border:`1px solid ${C.purple}33`, borderRadius:20 }}>
+                  <span style={{ fontSize:11, color:C.textMuted, opacity:0.8 }}>{district} · </span>
+                  <span style={{ fontSize:13, fontWeight:700, color:C.purple }}>{m}</span>
+                  <button onClick={() => {
+                    const newMalls = {...mallsMap,[city]:{...(mallsMap[city]||{}),[district]:((mallsMap[city]||{})[district]||[]).filter(x=>x!==m)}};
+                    updateOpts({...shopOptions, malls:newMalls});
+                  }} style={{ background:'none', border:'none', color:C.purple, fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
+                </div>
+              )))}
+              {allDistricts.flatMap(({city,district})=>((mallsMap[city]||{})[district]||[])).length===0 && <div style={{ fontSize:12, color:C.textMuted }}>尚未新增商場</div>}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <select value={`${newMallCity}|${newMallDistrict}`} onChange={e=>{const[c,d]=e.target.value.split('|');setNewMallCity(c);setNewMallDistrict(d);}}
+                style={{ ...gs.input, flex:'0 0 auto', width:'auto', cursor:'pointer', padding:'12px 10px', fontSize:13 }}>
+                <option value="|">選地區</option>
+                {allDistricts.map(({city,district})=>(
+                  <option key={`${city}-${district}`} value={`${city}|${district}`}>{cities.length>1?`${city}-`:''}{district}</option>
+                ))}
+              </select>
+              <ImeInput key="manage-shop-mall" style={{ ...gs.input, flex:1 }} placeholder="例：天神地下街、PARCO" value={newMall} onChange={v=>setNewMall(v)} />
+              <button onClick={() => {
+                if(!newMall.trim()||!newMallDistrict) return;
+                const city = newMallCity || cities[0];
+                const newMalls = {...mallsMap,[city]:{...(mallsMap[city]||{}),[newMallDistrict]:[...((mallsMap[city]||{})[newMallDistrict]||[]),newMall.trim()]}};
+                updateOpts({...shopOptions, malls:newMalls});
+                setNewMall('');
+              }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:C.purple, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
           </div>
 
