@@ -66,10 +66,12 @@ const gs = {
     borderRadius: 12,
     padding: "13px 15px",
     color: C.text,
-    fontSize: 15,
+    fontSize: 16,
     outline: "none",
     boxSizing: "border-box",
     fontFamily: "inherit",
+    WebkitAppearance: "none",
+    appearance: "none",
   },
   label: {
     display: "block",
@@ -703,14 +705,17 @@ function TripDetailScreen({ user, trip, onBack }) {
   async function loadFoodOptions() {
     try {
       const s = await getDoc(doc(db,"tripData",`${trip.id}_foodOptions`));
+      const defaultCity = trip.destination ? trip.destination.replace(/^.*[都道府県市]/,'').split(' ')[0] || trip.destination : '';
       if (s.exists()) {
         const data = s.data();
-        // 只更新新格式欄位，忽略舊格式（categories/locations）
+        const cities = data.cities?.length>0 ? data.cities : (defaultCity ? [defaultCity] : []);
         setFoodOptions(prev => ({
-          cities: data.cities || prev.cities,
-          districts: data.districts || prev.districts || {},
-          foodTypes: (data.foodTypes?.length>0) ? data.foodTypes : prev.foodTypes,
+          cities,
+          districts: data.districts || {},
+          foodTypes: data.foodTypes?.length>0 ? data.foodTypes : prev.foodTypes,
         }));
+      } else if (defaultCity) {
+        setFoodOptions(prev => ({ ...prev, cities:[defaultCity] }));
       }
     } catch(e) { console.error(e); }
   }
@@ -910,7 +915,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {tripDates.map(d => (
             <div key={d} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
               <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
-              {d!=='待安排' && <button onClick={() => handleDeleteDate(d)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:14, cursor:'pointer', opacity:0.6, padding:'0 2px' }}>🗑</button>}
+              {d!=='待安排' && <button onClick={() => handleDeleteDate(d)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
             </div>
           ))}
         </div>
@@ -1076,7 +1081,10 @@ function TripDetailScreen({ user, trip, onBack }) {
                           style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${item.visited?'#D97706':C.border}`, backgroundColor:item.visited?'#FEF3E8':C.bg, color:item.visited?'#D97706':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer' }}>
                           {item.visited?'✓ 已去':'標記已去'}
                         </button>
-                        {item.mapUrl && <button onClick={() => window.open(item.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:'1px solid #FDDCB0', backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺</button>}
+                        {(item.branches||[]).filter(b=>b.mapUrl).map((b,bi)=>(
+                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:'1px solid #FDDCB0', backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name||'地圖'}</button>
+                      ))}
+                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:'1px solid #FDDCB0', backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 地圖</button>}
                       </div>
                     </div>
                   </div>
@@ -1085,7 +1093,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           )}
         </div>
-        <button onClick={() => setFoodModal({open:true,data:{ city:foodSelectedCity!=='全部城市'?foodSelectedCity:'', districts:[...foodSelectedDistricts], foodType:foodSelectedType!=='全部食物'?foodSelectedType:'', visited:false }})}
+        <button onClick={() => setFoodModal({open:true,data:{ city:foodSelectedCity!=='全部城市'?foodSelectedCity:(foodOptions.cities||[])[0]||'', districts:[...foodSelectedDistricts], branches:foodSelectedDistricts.map(d=>({name:d,mapUrl:''})), foodType:foodSelectedType!=='全部食物'?foodSelectedType:'', visited:false }})}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#D97706,#F59E0B)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(217,119,6,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
       </div>
     );
@@ -1715,7 +1723,22 @@ function TripDetailScreen({ user, trip, onBack }) {
     const cities = foodOptions.cities || [];
     const foodTypes = foodOptions.foodTypes || [];
     const cityDistricts = d.city ? (foodOptions.districts||{})[d.city]||[] : [];
-    const itemDistricts = d.districts || [];
+    const districts = d.districts || [];
+    const branches = d.branches || [];
+
+    const toggleDistrict = (dist) => {
+      const isRemoving = districts.includes(dist);
+      const nextDistricts = isRemoving ? districts.filter(x=>x!==dist) : [...districts, dist];
+      let nextBranches = [...branches];
+      if (!isRemoving) {
+        if (!nextBranches.some(b=>b.name===dist)) {
+          nextBranches = [...nextBranches, { name:dist, mapUrl:'' }];
+        }
+      } else {
+        nextBranches = nextBranches.filter(b=>!(b.name===dist&&!b.mapUrl));
+      }
+      setFoodModal(p=>({...p, data:{...p.data, districts:nextDistricts, branches:nextBranches}}));
+    };
 
     return (
       <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
@@ -1728,7 +1751,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {/* 店名 */}
           <div style={{ marginBottom:14 }}>
             <label style={gs.label}>店家名稱 *</label>
-            <input style={gs.input} autoComplete="off" placeholder="例：一蘭拉麵" value={d.name||''} onChange={e=>{const v=e.target.value; setFoodModal(p=>({...p,data:{...p.data,name:v}}))}} />
+            <input style={gs.input} autoComplete="off" placeholder="例：一蘭拉麵" value={d.name||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,name:e.target.value}}))} />
           </div>
 
           {/* 城市 */}
@@ -1737,34 +1760,51 @@ function TripDetailScreen({ user, trip, onBack }) {
               <label style={gs.label}>城市</label>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 {cities.map(city => (
-                  <button key={city} type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,city:city,districts:[]}}))}
-                    style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${d.city===city?'#D97706':C.border}`, backgroundColor:d.city===city?'#D97706':C.bg, color:d.city===city?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                  <button key={city} type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,city:city,districts:[],branches:[]}}))}
+                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.city===city?'#D97706':C.border}`, backgroundColor:d.city===city?'#D97706':C.bg, color:d.city===city?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                     {city}
                   </button>
                 ))}
-                <button type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,city:'',districts:[]}}))}
-                  style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${!d.city?C.border:C.border}`, backgroundColor:!d.city?C.bg:C.bg, color:C.textMuted, fontSize:13, cursor:'pointer' }}>
-                  未填
-                </button>
               </div>
             </div>
           )}
 
-          {/* 地區（依城市動態顯示）*/}
+          {/* 地區（多選，依城市動態）*/}
           {d.city && cityDistricts.length > 0 && (
             <div style={{ marginBottom:14 }}>
               <label style={gs.label}>地區（可多選）</label>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 {cityDistricts.map(dist => {
-                  const sel = itemDistricts.includes(dist);
+                  const sel = districts.includes(dist);
                   return (
-                    <button key={dist} type="button" onClick={() => setFoodModal(p=>({ ...p, data:{ ...p.data, districts:sel?itemDistricts.filter(x=>x!==dist):[...itemDistricts,dist] } }))}
-                      style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blueSoft:C.bg, color:sel?C.blue:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                    <button key={dist} type="button" onClick={() => toggleDistrict(dist)}
+                      style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blueSoft:C.bg, color:sel?C.blue:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                       📍 {dist}
                     </button>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* 各地區的 Google Maps 連結 */}
+          {districts.length > 0 ? (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>🗺 各地區地圖連結</label>
+              {branches.map((b, bi) => (
+                <div key={bi} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
+                  <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:'#FEF3E8', color:'#D97706', fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
+                  <input style={{ ...gs.input, flex:1, padding:'10px 12px', fontSize:14 }} placeholder="貼上 Google Maps 連結" value={b.mapUrl||''}
+                    onChange={e => setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:e.target.value}:x)}}))} />
+                </div>
+              ))}
+              <button type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,branches:[...(p.data.branches||[]),{name:'',mapUrl:''}]}}))}
+                style={{ fontSize:12, color:'#D97706', fontWeight:700, background:'none', border:'none', cursor:'pointer', padding:'4px 0' }}>＋ 新增分店</button>
+            </div>
+          ) : (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>🗺 地圖連結（選填）</label>
+              <input style={gs.input} autoComplete="off" placeholder="貼上 Google Maps 連結" value={d.mapUrl||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} />
             </div>
           )}
 
@@ -1774,7 +1814,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
               {foodTypes.map(ft => (
                 <button key={ft} type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,foodType:p.data?.foodType===ft?'':ft}}))}
-                  style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${d.foodType===ft?C.green:C.border}`, backgroundColor:d.foodType===ft?C.greenSoft:C.bg, color:d.foodType===ft?C.green:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                  style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.foodType===ft?C.green:C.border}`, backgroundColor:d.foodType===ft?C.greenSoft:C.bg, color:d.foodType===ft?C.green:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                   {ft}
                 </button>
               ))}
@@ -1785,12 +1825,6 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ marginBottom:14 }}>
             <label style={gs.label}>💴 價位（選填）</label>
             <input style={gs.input} autoComplete="off" placeholder="例：¥1500、$$" value={d.price||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,price:e.target.value}}))} />
-          </div>
-
-          {/* 地圖連結 */}
-          <div style={{ marginBottom:14 }}>
-            <label style={gs.label}>地圖連結（選填）</label>
-            <input style={gs.input} autoComplete="off" placeholder="貼上 Google Maps 連結" value={d.mapUrl||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} />
           </div>
 
           {/* 備註 */}
