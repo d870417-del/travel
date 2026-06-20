@@ -3465,3 +3465,4 @@ export default function App() {
   if (currentTrip) return <TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} />;
   return <TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />;
 }
+
