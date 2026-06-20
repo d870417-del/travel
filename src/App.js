@@ -957,12 +957,22 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [foodSelectedDistricts, setFoodSelectedDistricts] = useState([]);
   const [foodSelectedType, setFoodSelectedType] = useState('全部食物');
   const [showManageFoodOptions, setShowManageFoodOptions] = useState(false);
+  // ManageFoodOptions local state (moved to top level to avoid hook-in-function issue)
+  const [mfoNewDistrict, setMfoNewDistrict] = useState('');
+  const [mfoNewDistrictCity, setMfoNewDistrictCity] = useState('');
+  const [mfoNewFoodType, setMfoNewFoodType] = useState('');
   const [shoppingModal, setShoppingModal] = useState({ open:false, data:null });
   const [shopTempPhotos, setShopTempPhotos] = useState([]);
   const [shopFilterCity, setShopFilterCity] = useState('全部城市');
   const [shopFilterMall, setShopFilterMall] = useState('全部商場');
   const [shopFilterMember, setShopFilterMember] = useState('all');
   const [showManageShopOptions, setShowManageShopOptions] = useState(false);
+  // ManageShopOptions local state
+  const [msoNewDistrict, setMsoNewDistrict] = useState('');
+  const [msoNewDistrictCity, setMsoNewDistrictCity] = useState('');
+  const [msoNewMall, setMsoNewMall] = useState('');
+  const [msoNewMallCity, setMsoNewMallCity] = useState('');
+  const [msoNewMallDistrict, setMsoNewMallDistrict] = useState('');
 
   const [showSettlement, setShowSettlement] = useState(false);
   const [todoModal, setTodoModal] = useState({ open:false, data:null });
@@ -1917,7 +1927,22 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
         )}
       </div>
-      <button onClick={() => setShoppingModal({open:true,data:{city:shopFilterCity!=='全部城市'?shopFilterCity:'',mall:shopFilterMall!=='全部商場'?shopFilterMall:''}})}
+      <button onClick={() => {
+        const sc = shopOptions.cities||[];
+        const autoCity = sc.length===1 ? sc[0] : '';
+        const locsMap = shopOptions.locations||{};
+        const effectiveCity = autoCity || (shopFilterCity!=='全部城市'?shopFilterCity:'');
+        const cityDistricts = effectiveCity ? (locsMap[effectiveCity]||[]) : [];
+        // shopFilterCity 可能存的是地區名稱
+        const selectedDistrict = cityDistricts.includes(shopFilterCity) ? shopFilterCity : '';
+        setShoppingModal({open:true, data:{
+          city: effectiveCity,
+          district: selectedDistrict,
+          mall: shopFilterMall!=='全部商場'?shopFilterMall:'',
+          branches: selectedDistrict ? [{name:selectedDistrict, mapUrl:''}] : [],
+        }});
+        setShopTempPhotos([]);
+      }}
         style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(190,24,93,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
     </div>
   );
@@ -2267,10 +2292,10 @@ function TripDetailScreen({ user, trip, onBack }) {
 
   // 管理美食選項 Modal
   const ManageFoodOptionsModal = () => {
-    const [newDistrict, setNewDistrict] = useState('');
-    const [newDistrictCity, setNewDistrictCity] = useState('');
-    const [newFoodType, setNewFoodType] = useState('');
     if (!showManageFoodOptions) return null;
+    const newDistrict = mfoNewDistrict; const setNewDistrict = setMfoNewDistrict;
+    const newDistrictCity = mfoNewDistrictCity; const setNewDistrictCity = setMfoNewDistrictCity;
+    const newFoodType = mfoNewFoodType; const setNewFoodType = setMfoNewFoodType;
     const cities = foodOptions.cities || [];
     const districtsMap = foodOptions.districts || {};
     const foodTypes = foodOptions.foodTypes || [];
@@ -2507,12 +2532,12 @@ function TripDetailScreen({ user, trip, onBack }) {
 
   // 管理購物選項 Modal
   const ManageShopOptionsModal = () => {
-    const [newDistrict, setNewDistrict] = useState('');
-    const [newDistrictCity, setNewDistrictCity] = useState('');
-    const [newMall, setNewMall] = useState('');
-    const [newMallCity, setNewMallCity] = useState('');
-    const [newMallDistrict, setNewMallDistrict] = useState('');
     if (!showManageShopOptions) return null;
+    const newDistrict = msoNewDistrict; const setNewDistrict = setMsoNewDistrict;
+    const newDistrictCity = msoNewDistrictCity; const setNewDistrictCity = setMsoNewDistrictCity;
+    const newMall = msoNewMall; const setNewMall = setMsoNewMall;
+    const newMallCity = msoNewMallCity; const setNewMallCity = setMsoNewMallCity;
+    const newMallDistrict = msoNewMallDistrict; const setNewMallDistrict = setMsoNewMallDistrict;
     const cities = shopOptions.cities || [];
     const locationsMap = shopOptions.locations || {};
     const mallsMap = shopOptions.malls || {};
