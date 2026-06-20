@@ -127,6 +127,7 @@ function AuthScreen() {
         await setDoc(doc(db, "users", cred.user.uid), {
           uid: cred.user.uid,
           displayName: name.trim(),
+          username: name.trim().toLowerCase().replace(/\s+/g, '_'),
           email: email.toLowerCase(),
           createdAt: serverTimestamp(),
         });
@@ -161,8 +162,8 @@ function AuthScreen() {
           <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 20 }}>登入</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
-              <label style={gs.label}>Email</label>
-              <input style={gs.input} type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} />
+              <label style={gs.label}>Email / 用戶名稱</label>
+              <input style={gs.input} type="email" placeholder="Email 或用戶名稱" value={email} onChange={e => setEmail(e.target.value)} />
             </div>
             <div>
               <label style={gs.label}>密碼</label>
@@ -257,11 +258,35 @@ function AuthScreen() {
 function TripListScreen({ user, onEnterTrip }) {
   const [trips, setTrips] = useState([]);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [tripToDelete, setTripToDelete] = useState(null); // { trip, isAdmin }
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 
   useEffect(() => { loadTrips(); }, [user.uid]);
+
+  async function leaveTrip(trip) {
+    try {
+      await deleteDoc(doc(db, "tripMembers", `${trip.id}_${user.uid}`));
+      setTrips(p => p.filter(t => t.id !== trip.id));
+      setTripToDelete(null);
+    } catch(e) { console.error(e); }
+  }
+
+  async function deleteTrip(trip) {
+    try {
+      // 刪除所有成員
+      const mSnap = await getDocs(query(collection(db, "tripMembers"), where("tripId", "==", trip.id)));
+      await Promise.all(mSnap.docs.map(d => deleteDoc(d.ref)));
+      // 刪除旅程資料
+      const dataKeys = ['itinerary','food','foodOptions','shopping','shopOptions','wallet','todos','notes','splitRecords'];
+      await Promise.all(dataKeys.map(k => deleteDoc(doc(db, "tripData", `${trip.id}_${k}`))));
+      // 刪除旅程本體
+      await deleteDoc(doc(db, "trips", trip.id));
+      setTrips(p => p.filter(t => t.id !== trip.id));
+      setTripToDelete(null);
+    } catch(e) { console.error(e); }
+  }
 
   async function loadTrips() {
     setLoading(true);
@@ -322,20 +347,25 @@ function TripListScreen({ user, onEnterTrip }) {
               const color = trip.color || TRIP_COLORS[i % TRIP_COLORS.length];
               const fmtDate = (d) => { if (!d) return null; const dt = new Date(d); return `${dt.getMonth()+1}/${dt.getDate()}`; };
               return (
-                <button key={trip.id} onClick={() => onEnterTrip(trip)}
-                  style={{ ...gs.card, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", width: "100%", textAlign: "left", background: C.surface }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 13, flexShrink: 0, backgroundColor: color+"22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-                    {trip.emoji || "✈️"}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{trip.name}</div>
-                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-                      {trip.destination && `📍 ${trip.destination}`}
-                      {trip.startDate && ` · ${fmtDate(trip.startDate)}${trip.endDate ? ` – ${fmtDate(trip.endDate)}` : ""}`}
+                <div key={trip.id} style={{ ...gs.card, display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: C.surface }}>
+                  <button onClick={() => onEnterTrip(trip)} style={{ display:"flex", alignItems:"center", gap:14, flex:1, background:"none", border:"none", cursor:"pointer", textAlign:"left", padding:0 }}>
+                    <div style={{ width: 46, height: 46, borderRadius: 13, flexShrink: 0, backgroundColor: color+"22", border: `1.5px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+                      {trip.emoji || "✈️"}
                     </div>
-                  </div>
-                  <div style={{ color: color, fontSize: 18, fontWeight: 700 }}>›</div>
-                </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{trip.name}</div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                        {(trip.destinations||[trip.destination]).filter(Boolean).map(d=>`📍 ${d}`).join(' · ')}
+                        {trip.startDate && ` · ${fmtDate(trip.startDate)}${trip.endDate ? ` – ${fmtDate(trip.endDate)}` : ""}`}
+                      </div>
+                    </div>
+                    <div style={{ color: color, fontSize: 18, fontWeight: 700 }}>›</div>
+                  </button>
+                  <button onClick={() => {
+                    const isAdmin = trip.createdBy === user.uid;
+                    setTripToDelete({ trip, isAdmin });
+                  }} style={{ background:"none", border:"none", color:C.textMuted, fontSize:18, cursor:"pointer", padding:"4px 6px", opacity:0.5, flexShrink:0 }}>×</button>
+                </div>
               );
             })}
           </div>
@@ -374,6 +404,32 @@ function TripListScreen({ user, onEnterTrip }) {
             <div style={{ display:'flex', gap:10 }}>
               <button onClick={() => setConfirmLogout(false)} style={{ flex:1, padding:12, border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:14, fontWeight:600, cursor:'pointer' }}>取消</button>
               <button onClick={() => { setConfirmLogout(false); signOut(auth); }} style={{ flex:1, padding:12, border:'none', borderRadius:12, backgroundColor:C.danger, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>登出</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {tripToDelete && (
+        <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:24, backgroundColor:'rgba(45,42,36,0.5)' }}>
+          <div style={{ ...gs.card, width:'100%', maxWidth:320, padding:24 }}>
+            <div style={{ fontSize:32, textAlign:'center', marginBottom:10 }}>{tripToDelete.isAdmin ? '🗑' : '🚪'}</div>
+            <div style={{ fontSize:16, fontWeight:800, marginBottom:6, textAlign:'center' }}>
+              {tripToDelete.isAdmin ? '刪除旅程' : '退出旅程'}
+            </div>
+            <div style={{ fontSize:13, color:C.textMuted, marginBottom:6, textAlign:'center' }}>
+              「{tripToDelete.trip.name}」
+            </div>
+            <div style={{ fontSize:12, color:C.textMuted, marginBottom:20, textAlign:'center', lineHeight:1.6 }}>
+              {tripToDelete.isAdmin
+                ? '你是管理員，刪除後所有成員的資料都會一起刪除，無法復原。'
+                : '退出後你將無法看到這個旅程，可以再用邀請碼重新加入。'}
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setTripToDelete(null)} style={{ flex:1, padding:12, border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:14, fontWeight:600, cursor:'pointer' }}>取消</button>
+              {tripToDelete.isAdmin ? (
+                <button onClick={() => deleteTrip(tripToDelete.trip)} style={{ flex:1, padding:12, border:'none', borderRadius:12, backgroundColor:C.danger, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>刪除旅程</button>
+              ) : (
+                <button onClick={() => leaveTrip(tripToDelete.trip)} style={{ flex:1, padding:12, border:'none', borderRadius:12, backgroundColor:C.danger, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>退出旅程</button>
+              )}
             </div>
           </div>
         </div>
@@ -728,8 +784,11 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [walletItems, setWalletItems] = useState([]);
   const [personalWalletItems, setPersonalWalletItems] = useState([]);
   const [splitRecords, setSplitRecords] = useState([]);
-  const [rates, setRates] = useState({ KRW:0.022, JPY:0.22, TWD:1 });
+  const [rates, setRates] = useState({ KRW:0.022, JPY:0.22, TWD:1, USD:30 });
   const [ratesUpdatedAt, setRatesUpdatedAt] = useState('使用預設匯率');
+  const [tripCurrencies, setTripCurrencies] = useState(['TWD','JPY']); // 這趟旅程用的幣別
+  const [showCurrencySettings, setShowCurrencySettings] = useState(false);
+  const [manualRates, setManualRates] = useState({}); // 手動覆蓋的匯率
   const [walletSubTab, setWalletSubTab] = useState('overview');
   const [walletSelectedDate, setWalletSelectedDate] = useState('');
   const [showPoolSettlement, setShowPoolSettlement] = useState(false);
@@ -853,13 +912,34 @@ function TripDetailScreen({ user, trip, onBack }) {
     if (sp.exists()) setPersonalWalletItems(sp.data().items||[]);
     const sr = await getDoc(doc(db,"tripData",`${trip.id}_splitRecords`));
     if (sr.exists()) setSplitRecords(sr.data().items||[]);
+    // 載入幣別設定
+    try {
+      const cs = await getDoc(doc(db,"tripData",`${trip.id}_currencies`));
+      if (cs.exists()) {
+        const cd = cs.data();
+        if (cd.currencies) setTripCurrencies(cd.currencies);
+        if (cd.manualRates) setManualRates(cd.manualRates);
+      }
+    } catch(e) {}
     // 抓即時匯率
     fetch('https://api.exchangerate-api.com/v4/latest/TWD').then(r=>r.json()).then(data=>{
-      if(data.rates){ setRates({ KRW:parseFloat((1/data.rates.KRW).toFixed(4)), JPY:parseFloat((1/data.rates.JPY).toFixed(4)), TWD:1 }); setRatesUpdatedAt('匯率已更新'); }
+      if(data.rates){
+        setRates(prev => ({
+          ...prev,
+          KRW: parseFloat((1/data.rates.KRW).toFixed(4)),
+          JPY: parseFloat((1/data.rates.JPY).toFixed(4)),
+          USD: parseFloat((1/data.rates.USD).toFixed(2)),
+          TWD: 1,
+        }));
+        setRatesUpdatedAt('匯率已更新');
+      }
     }).catch(()=>{});
   }
   async function saveWallet(items) {
     await setDoc(doc(db,"tripData",`${trip.id}_wallet`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
+  }
+  async function saveCurrencies(currencies, mr) {
+    await setDoc(doc(db,"tripData",`${trip.id}_currencies`), { currencies, manualRates:mr||{}, updatedAt:serverTimestamp() });
   }
   async function savePersonalWallet(items) {
     await setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${user.uid}`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
@@ -1182,7 +1262,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                     </div>
                     <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{item.name}</div>
-                    {item.date && item.date !== '待安排' && <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>🗓 {item.date}{item.time?` ${item.time}`:''}</div>}
+                    {item.linkedDate && <div style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 8px', borderRadius:6, backgroundColor:color+'18', marginBottom:4 }}><span style={{ fontSize:11, color, fontWeight:700 }}>🗓 {item.linkedDate}</span></div>}
                     {item.price && <div style={{ fontSize:12, color:C.textMuted, marginBottom:4 }}>💴 {item.price}</div>}
                     {item.note && <div style={{ fontSize:12, color:'#5A5247', backgroundColor:'#FEF3E8', borderLeft:'3px solid #D97706', padding:'8px 10px', borderRadius:'0 8px 8px 0', marginBottom:8, whiteSpace:'pre-wrap' }}>{item.note}</div>}
                     {item.photos?.length>0 && <div style={{ display:'flex', gap:6, overflowX:'auto', marginBottom:8 }}>{item.photos.map((p,i) => <img key={i} src={p} style={{ width:56, height:56, objectFit:'cover', borderRadius:8, flexShrink:0, border:`1px solid ${C.border}` }} alt="food" />)}</div>}
@@ -1345,10 +1425,15 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ fontSize:11, color:C.textMuted }}>{personalWalletItems.length} 筆帳目・點此查看明細</div>
         </button>
 
-        {/* 匯率資訊 */}
-        <div style={{ padding:'10px 14px', borderRadius:12, backgroundColor:C.bg, border:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:11, color:C.textMuted }}>1 JPY ≈ NT${rates.JPY}・1 KRW ≈ NT${rates.KRW}・{ratesUpdatedAt}</div>
-        </div>
+        {/* 匯率資訊 + 設定 */}
+        <button onClick={() => setShowCurrencySettings(true)}
+          style={{ width:'100%', padding:'10px 14px', borderRadius:12, backgroundColor:C.bg, border:`1px solid ${C.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer', textAlign:'left' }}>
+          <div style={{ fontSize:11, color:C.textMuted }}>
+            {tripCurrencies.filter(c=>c!=='TWD').map(c=>`1 ${c} ≈ NT${(manualRates[c]||rates[c]||'?')}`).join('・')}
+            {tripCurrencies.length<=1 && '點此設定幣別'}
+          </div>
+          <div style={{ fontSize:11, color:C.purple, fontWeight:700 }}>設定 ›</div>
+        </button>
       </div>
     );
 
@@ -1941,6 +2026,25 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           </div>
 
+          {/* 連結行程日期 */}
+          {tripDates.filter(d=>d!=='待安排').length > 0 && (
+            <div style={{ marginBottom:14 }}>
+              <label style={gs.label}>🗓 連結行程日期（選填）</label>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                <button type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,linkedDate:''}}))}
+                  style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${!d.linkedDate?color:C.border}`, backgroundColor:!d.linkedDate?color+'18':C.bg, color:!d.linkedDate?color:C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  不連結
+                </button>
+                {tripDates.filter(dt=>dt!=='待安排').map(dt=>(
+                  <button key={dt} type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,linkedDate:dt}}))}
+                    style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${d.linkedDate===dt?color:C.border}`, backgroundColor:d.linkedDate===dt?color+'18':C.bg, color:d.linkedDate===dt?color:C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    {dt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 價位 */}
           <div style={{ marginBottom:14 }}>
             <label style={gs.label}>💴 價位（選填）</label>
@@ -2318,6 +2422,64 @@ function TripDetailScreen({ user, trip, onBack }) {
     </div>
   );
 
+  // 幣別設定 Modal
+  const CurrencySettingsModal = () => {
+    const ALL_CURRENCIES = ['TWD','JPY','KRW','USD','EUR','HKD','SGD','THB'];
+    const effectiveRates = { ...rates, ...manualRates };
+    if (!showCurrencySettings) return null;
+    return (
+      <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:300 }}>
+        <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <div style={{ fontSize:16, fontWeight:800 }}>幣別與匯率設定</div>
+            <button onClick={() => setShowCurrencySettings(false)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
+          </div>
+          <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>匯率為 1 外幣 = ? TWD，可手動修改</div>
+
+          {/* 選擇這趟旅程使用的幣別 */}
+          <label style={gs.label}>這趟旅程使用的幣別</label>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:20 }}>
+            {ALL_CURRENCIES.map(cur => {
+              const sel = tripCurrencies.includes(cur);
+              return (
+                <button key={cur} type="button" onClick={() => {
+                  const next = sel ? tripCurrencies.filter(c=>c!==cur) : [...tripCurrencies,cur];
+                  if(next.length===0) return;
+                  setTripCurrencies(next);
+                  saveCurrencies(next, manualRates);
+                }} style={{ padding:'8px 16px', borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, backgroundColor:sel?C.purpleSoft:C.bg, color:sel?C.purple:C.textMuted, fontSize:14, fontWeight:700, cursor:'pointer' }}>
+                  {cur}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 匯率（可手動修改）*/}
+          <label style={gs.label}>匯率（1 外幣 = ? TWD）</label>
+          <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+            {tripCurrencies.filter(c=>c!=='TWD').map(cur => (
+              <div key={cur} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', backgroundColor:C.bg, borderRadius:12, border:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:14, fontWeight:800, color:C.purple, width:40 }}>{cur}</div>
+                <div style={{ flex:1, fontSize:12, color:C.textMuted }}>自動: {rates[cur]||'?'}</div>
+                <input type="number" value={manualRates[cur]||''} placeholder={String(rates[cur]||'')}
+                  onChange={e => {
+                    const nr = {...manualRates, [cur]: e.target.value ? parseFloat(e.target.value) : undefined};
+                    if(!e.target.value) delete nr[cur];
+                    setManualRates(nr);
+                    saveCurrencies(tripCurrencies, nr);
+                  }}
+                  style={{ ...gs.input, width:80, padding:'8px 10px', textAlign:'right', fontSize:14 }} />
+              </div>
+            ))}
+          </div>
+
+          <button onClick={() => setShowCurrencySettings(false)}
+            style={{ width:'100%', padding:14, border:`1px solid ${C.border}`, borderRadius:13, fontSize:15, fontWeight:700, cursor:'pointer', backgroundColor:C.bg, color:C.text }}>完成</button>
+        </div>
+      </div>
+    );
+  };
+
   // 待辦 Modal
   const TodoModal = () => !todoModal.open ? null : (
     <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }}>
@@ -2387,7 +2549,16 @@ function TripDetailScreen({ user, trip, onBack }) {
   // 主渲染
   // ════════════════════════════════════════
   return (
-    <div style={{ ...gs.app, maxHeight:'100vh' }}>
+    <div style={{ ...gs.app, maxHeight:'100vh' }}
+      onTouchStart={e => { window.__swipeStartX = e.touches[0].clientX; }}
+      onTouchEnd={e => {
+        const dx = e.changedTouches[0].clientX - (window.__swipeStartX||0);
+        if (dx > 80) { // 右滑 80px 以上
+          if (moreSection) setMoreSection(null);
+          else if (walletSubTab !== 'overview') setWalletSubTab('overview');
+          else onBack();
+        }
+      }}>
       {TripHeader()}
       {tab==='itinerary' && ItineraryTab()}
       {tab==='food' && FoodTab()}
@@ -2403,6 +2574,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       {ManageShopOptionsModal()}
       {WalletModal()}
       {SettlementModal()}
+      {CurrencySettingsModal()}
       {TodoModal()}
       {NoteModal()}
       {DatePickerModal()}
