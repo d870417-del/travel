@@ -3507,6 +3507,20 @@ function TripDetailScreen({ user, trip, onBack }) {
 
 
 // ─── 主 App ───────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  componentDidCatch(error, info) { this.setState({ error: error.message + '\n' + info.componentStack }); }
+  render() {
+    if (this.state.error) return (
+      <div style={{ padding:20, backgroundColor:'#FDE8E8', minHeight:'100vh' }}>
+        <div style={{ fontSize:14, fontWeight:700, color:'#C00', marginBottom:10 }}>❌ 發生錯誤</div>
+        <pre style={{ fontSize:11, color:'#333', whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{this.state.error}</pre>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [authUser, setAuthUser] = useState(undefined);
   const [currentTrip, setCurrentTrip] = useState(null);
@@ -3521,6 +3535,6 @@ export default function App() {
 
   if (authUser === undefined) return <LoadingScreen />;
   if (!authUser) return <AuthScreen />;
-  if (currentTrip) return <TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} />;
+  if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} /></ErrorBoundary>;
   return <TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />;
 }
