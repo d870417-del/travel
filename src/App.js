@@ -21,14 +21,6 @@ import {
 import { auth, db } from "./firebase";
 
 // ─── 顏色主題（米色底 + 藍綠紫）───────────────────────────────
-// IME 注音輸入 helper
-let __composing = false;
-const imeProps = (onChange) => ({
-  onCompositionStart: () => { __composing = true; },
-  onCompositionEnd: (e) => { __composing = false; onChange(e.target.value); },
-  onChange: (e) => { if (!__composing) onChange(e.target.value); },
-});
-
 const C = {
   bg: "#F5F0E8",         // 米色底
   surface: "#FDFAF4",    // 卡片白米
@@ -58,6 +50,7 @@ const gs = {
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
     display: "flex",
     flexDirection: "column",
+    position: "relative",
   },
   card: {
     backgroundColor: C.surface,
@@ -208,7 +201,7 @@ function AuthScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label style={gs.label}>你的名稱</label>
-              <input style={gs.input} placeholder="輸入暱稱" value={name} {...imeProps(setName)} />
+              <input style={gs.input} placeholder="輸入暱稱" value={name} onChange={e=>setName(e.target.value)} />
             </div>
             <div>
               <label style={gs.label}>Email</label>
@@ -371,7 +364,7 @@ function TripListScreen({ user, onEnterTrip }) {
       {showCreate && <CreateTripModal user={user} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); loadTrips(); }} />}
       {showJoin && <JoinTripModal user={user} onClose={() => setShowJoin(false)} onJoined={trip => { setShowJoin(false); onEnterTrip(trip); }} />}
       {confirmLogout && (
-        <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:24, backgroundColor:'rgba(45,42,36,0.5)' }}>
+        <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:24, backgroundColor:'rgba(45,42,36,0.5)' }}>
           <div style={{ ...gs.card, width:'100%', maxWidth:320, padding:24 }}>
             <div style={{ fontSize:32, textAlign:'center', marginBottom:10 }}>👋</div>
             <div style={{ fontSize:16, fontWeight:800, marginBottom:6, textAlign:'center' }}>確認登出</div>
@@ -712,10 +705,11 @@ function TripDetailScreen({ user, trip, onBack }) {
       const s = await getDoc(doc(db,"tripData",`${trip.id}_foodOptions`));
       if (s.exists()) {
         const data = s.data();
+        // 只更新新格式欄位，忽略舊格式（categories/locations）
         setFoodOptions(prev => ({
           cities: data.cities || prev.cities,
           districts: data.districts || prev.districts || {},
-          foodTypes: data.foodTypes?.length>0 ? data.foodTypes : prev.foodTypes,
+          foodTypes: (data.foodTypes?.length>0) ? data.foodTypes : prev.foodTypes,
         }));
       }
     } catch(e) { console.error(e); }
@@ -916,7 +910,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {tripDates.map(d => (
             <div key={d} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
               <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
-              {d!=='待安排' && <button onClick={() => handleDeleteDate(d)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
+              {d!=='待安排' && <button onClick={() => handleDeleteDate(d)} style={{ background:'none', border:'none', color:C.textMuted, fontSize:14, cursor:'pointer', opacity:0.6, padding:'0 2px' }}>🗑</button>}
             </div>
           ))}
         </div>
@@ -947,7 +941,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                         <button onClick={() => { setModal({open:true,data:item}); setTempPhotos(item.photos||[]); }} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => setConfirmDel({title:'確認刪除',message:'確定刪除這個行程項目嗎？',fn:()=>handleDeleteItem(item.id)})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:12, cursor:'pointer' }}>🗑</button>
+                        <button onClick={() => setConfirmDel({title:'確認刪除',message:'確定刪除這個行程項目嗎？',fn:()=>handleDeleteItem(item.id)})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
                       </div>
                     </div>
                     <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{item.name}</div>
@@ -1067,7 +1061,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                         <button onClick={() => setFoodModal({open:true,data:{...item}})} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => setConfirmDel({title:'刪除美食',message:`確定刪除「${item.name}」？`,fn:()=>{const n=foodItems.filter(i=>i.id!==item.id);setFoodItems(n);saveFood(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:12, cursor:'pointer' }}>🗑</button>
+                        <button onClick={() => setConfirmDel({title:'刪除美食',message:`確定刪除「${item.name}」？`,fn:()=>{const n=foodItems.filter(i=>i.id!==item.id);setFoodItems(n);saveFood(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
                       </div>
                     </div>
                     <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{item.name}</div>
@@ -1490,7 +1484,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                     {isMine && (
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                         <button onClick={() => setShoppingModal({open:true,data:item})} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => setConfirmDel({title:'刪除',message:`確定刪除「${item.name}」？`,fn:()=>{const n=shoppingItems.filter(i=>i.id!==item.id);setShoppingItems(n);saveShopping(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:12, cursor:'pointer' }}>🗑</button>
+                        <button onClick={() => setConfirmDel({title:'刪除',message:`確定刪除「${item.name}」？`,fn:()=>{const n=shoppingItems.filter(i=>i.id!==item.id);setShoppingItems(n);saveShopping(n);}})} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
                       </div>
                     )}
                   </div>
@@ -1578,7 +1572,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                   <div key={note.id} style={{ ...gs.card, padding:'16px' }}>
                     <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginBottom:8 }}>
                       <button onClick={() => { setNoteModal({open:true,data:note}); setNotePhoto(note.photo||null); }} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                      <button onClick={() => { const n=sharedNotes.filter(x=>x.id!==note.id); setSharedNotes(n);saveNotes(n); }} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:12, cursor:'pointer' }}>🗑</button>
+                      <button onClick={() => { const n=sharedNotes.filter(x=>x.id!==note.id); setSharedNotes(n);saveNotes(n); }} style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:14, cursor:'pointer' }}>🗑</button>
                     </div>
                     {note.photo && <img src={note.photo} style={{ width:'100%', height:160, objectFit:'cover', borderRadius:12, marginBottom:10 }} alt="note" />}
                     {note.content && <div style={{ fontSize:14, color:C.text, whiteSpace:'pre-wrap', lineHeight:1.7, marginBottom:10 }}>{note.content}</div>}
@@ -1691,7 +1685,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div><label style={gs.label}>時間</label><input type="time" value={modal.data?.time||''} onChange={e=>setModal(p=>({...p,data:{...p.data,time:e.target.value}}))} style={gs.input} /></div>
         </div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>類別</label><select value={modal.data?.category||'景點'} onChange={e=>setModal(p=>({...p,data:{...p.data,category:e.target.value}}))} style={{ ...gs.input, cursor:'pointer' }}>{['景點','美食','購物','交通','住宿','其他'].map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><input style={gs.input} placeholder="例：逛淺草寺" autoComplete="off" value={modal.data?.name||''} {...imeProps(v=>setModal(p=>({...p,data:{...p.data,name:v}})))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><input style={gs.input} placeholder="例：逛淺草寺" autoComplete="off" value={modal.data?.name||''} onChange={e=>{const v=e.target.value; setModal(p=>({...p,data:{...p.data,name:v}}))}} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>📍 地點</label><input style={gs.input} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={e=>setModal(p=>({...p,data:{...p.data,location:e.target.value}}))} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={modal.data?.mapUrl||''} onChange={e=>setModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>備註</label><textarea value={modal.data?.note||''} onChange={e=>setModal(p=>({...p,data:{...p.data,note:e.target.value}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
@@ -1734,7 +1728,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {/* 店名 */}
           <div style={{ marginBottom:14 }}>
             <label style={gs.label}>店家名稱 *</label>
-            <input style={gs.input} autoComplete="off" placeholder="例：一蘭拉麵" value={d.name||''} {...imeProps(v=>setFoodModal(p=>({...p,data:{...p.data,name:v}})))} />
+            <input style={gs.input} autoComplete="off" placeholder="例：一蘭拉麵" value={d.name||''} onChange={e=>{const v=e.target.value; setFoodModal(p=>({...p,data:{...p.data,name:v}}))}} />
           </div>
 
           {/* 城市 */}
@@ -1785,15 +1779,6 @@ function TripDetailScreen({ user, trip, onBack }) {
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* 行程日期連動 */}
-          <div style={{ marginBottom:14 }}>
-            <label style={gs.label}>行程日期（選填）</label>
-            <select value={d.date||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,date:e.target.value}}))} style={{ ...gs.input, cursor:'pointer' }}>
-              <option value="">不連結行程</option>
-              {tripDates.map(dt=><option key={dt} value={dt}>{dt}</option>)}
-            </select>
           </div>
 
           {/* 價位 */}
@@ -1927,7 +1912,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             {((shopOptions.malls||{})[shoppingModal.data?.city]||[]).map(m=><option key={m} value={m}>{m}</option>)}
           </select>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>🛍️ 商品名稱 *</label><input style={gs.input} placeholder="例：Matin Kim 外套" autoComplete="off" value={shoppingModal.data?.name||''} {...imeProps(v=>setShoppingModal(p=>({...p,data:{...p.data,name:v}})))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>🛍️ 商品名稱 *</label><input style={gs.input} placeholder="例：Matin Kim 外套" autoComplete="off" value={shoppingModal.data?.name||''} onChange={e=>{const v=e.target.value; setShoppingModal(p=>({...p,data:{...p.data,name:v}}))}} /></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>🌐 地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={shoppingModal.data?.mapUrl||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
         <div style={{ marginBottom:16 }}><label style={gs.label}>💡 備註</label><textarea value={shoppingModal.data?.note||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,note:e.target.value}}))} rows={2} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => { if(!shoppingModal.data?.name?.trim())return; const fd={...shoppingModal.data,isBought:shoppingModal.data.isBought||false,addedByName:user.displayName||user.email,addedById:user.uid,createdAt:shoppingModal.data.createdAt||Date.now()}; const n=shoppingModal.data.id?shoppingItems.map(i=>i.id===shoppingModal.data.id?fd:i):[...shoppingItems,{...fd,id:Date.now()}]; setShoppingItems(n);saveShopping(n);setShoppingModal({open:false,data:null}); }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff' }}>確認儲存</button>
@@ -2004,7 +1989,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
 
           {/* 名稱 */}
-          <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><input style={gs.input} placeholder="例：晚餐、計程車" autoComplete="off" value={d.name||''} {...imeProps(v=>setWalletModal(p=>({...p,data:{...p.data,name:v}})))} /></div>
+          <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><input style={gs.input} placeholder="例：晚餐、計程車" autoComplete="off" value={d.name||''} onChange={e=>{const v=e.target.value; setWalletModal(p=>({...p,data:{...p.data,name:v}}))}} /></div>
 
           {/* 金額 + 計算機 */}
           <div style={{ backgroundColor:C.bg, borderRadius:14, padding:14, marginBottom:12 }}>
@@ -2173,7 +2158,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ fontSize:16, fontWeight:800 }}>{todoModal.data?.id?'編輯':'新增項目'}</div>
           <button onClick={() => setTodoModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
         </div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>內容 *</label><input style={gs.input} placeholder="輸入待辦事項..." value={todoModal.data?.content||''} {...imeProps(v=>setTodoModal(p=>({...p,data:{...p.data,content:v}})))} /></div>
+        <div style={{ marginBottom:12 }}><label style={gs.label}>內容 *</label><input style={gs.input} placeholder="輸入待辦事項..." value={todoModal.data?.content||''} onChange={e=>{const v=e.target.value; setTodoModal(p=>({...p,data:{...p.data,content:v}}))}} /></div>
         <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><textarea value={todoModal.data?.note||''} onChange={e=>setTodoModal(p=>({...p,data:{...p.data,note:e.target.value}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <button onClick={() => {
           if(!todoModal.data?.content?.trim())return;
