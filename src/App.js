@@ -1851,7 +1851,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
         {/* 次頁 header */}
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:8 }} />
+          <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
           <div style={{ fontSize:15, fontWeight:800 }}>{pageTitle}</div>
         </div>
 
@@ -2274,7 +2274,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       return (
         <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
           <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:8 }} />
+            <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
             <div style={{ fontSize:15, fontWeight:800 }}>{isShared?'共用備忘錄':'個人備忘錄'}</div>
           </div>
           <div style={{ padding:16, flex:1 }}>
@@ -2348,7 +2348,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       return (
         <div style={{ flex:1, overflowY:'auto' }}>
           <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:8 }} />
+            <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
             <div style={{ fontSize:15, fontWeight:800 }}>成員（{members.length} 人）</div>
           </div>
           <div style={{ padding:20 }}>
@@ -2381,7 +2381,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     if (moreSection==='invite') return (
       <div style={{ flex:1, overflowY:'auto' }}>
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:8 }} />
+          <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
           <div style={{ fontSize:15, fontWeight:800 }}>邀請碼</div>
         </div>
         <div style={{ padding:20 }}>
