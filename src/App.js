@@ -1133,6 +1133,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [walletSelectedDate, setWalletSelectedDate] = useState('');
   const [showPoolSettlement, setShowPoolSettlement] = useState(false);
   const [showPersonalSettlement, setShowPersonalSettlement] = useState(false);
+  const [splitModal, setSplitModal] = useState({ open:false, data:null });
   const [walletModal, setWalletModal] = useState({ open:false, data:null });
   const [walletCalc, setWalletCalc] = useState(false);
   const [transferStates, setTransferStates] = useState({});
@@ -1395,13 +1396,16 @@ function TripDetailScreen({ user, trip, onBack }) {
       const cur = w.currency || 'TWD';
       const perPerson = Math.floor(amt / splitTo.length);
       const remainder = amt - perPerson * splitTo.length;
-      // 用固定排序決定誰多付
       const sortedSplitTo = [...splitTo].sort();
-      sortedSplitTo.forEach((uid, idx) => {
+      const splitN = sortedSplitTo.length;
+      // 用 createdAt hash 輪換多付者
+      const splitOffset = record.createdAt ? (Math.floor(record.createdAt/1000) % splitN) : 0;
+      sortedSplitTo.forEach((uid, i) => {
         if (!balance[uid]) balance[uid] = {};
         if (!balance[payer]) balance[payer] = {};
         if (uid !== payer) {
-          const extra = idx < remainder ? 1 : 0;
+          const rotatedIdx = (i - splitOffset + splitN) % splitN;
+          const extra = rotatedIdx < remainder ? 1 : 0;
           balance[uid][cur] = (balance[uid][cur]||0) - (perPerson + extra);
           balance[payer][cur] = (balance[payer][cur]||0) + (perPerson + extra);
         }
@@ -1949,6 +1953,9 @@ function TripDetailScreen({ user, trip, onBack }) {
             </>
           )}
         </div>
+        {/* 新增代墊按鈕 */}
+        <button onClick={() => setSplitModal({open:true, data:{payerId:user.uid, receiverIds:[], amount:'', currency:(tripCurrencies||['JPY'])[0]||'JPY', note:''}})}
+          style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${C.green}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
       </div>
     );
 
@@ -2055,15 +2062,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           <button onClick={()=>{setWalletModal({open:true,data:{...item,contributorIds:item.contributorIds||allUids,forMemberIds:item.forMemberIds||allUids}});setWalletCalc(false);}} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
                           <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>{
                             setActiveItems(p=>p.filter(i=>i.id!==item.id));
-                            // 刪除相關的 splitRecords（用 walletItemId 或 createdAt 對應）
-                            if (!isShared) {
-                              const newRecords = splitRecords.filter(r=>
-                                r.walletItemId !== item.id && r.createdAt !== item.createdAt
-                              );
-                              if(newRecords.length !== splitRecords.length) {
-                                setSplitRecords(newRecords); saveSplitRecords(newRecords);
-                              }
-                            }
+
                           }})} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                         </div>
                       </div>
@@ -3104,36 +3103,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           )}
 
-          {/* 個人記帳：代墊設定（跟舊版一樣） */}
-          {!isShared && (
-            <div style={{ marginBottom:14, backgroundColor:C.blueSoft, borderRadius:12, padding:'12px 14px', border:`1px solid ${C.blue}22` }}>
-              <label style={{ ...gs.label, color:C.blue }}>💳 代墊設定（選填）</label>
-              <div style={{ marginBottom:8, marginTop:6 }}>
-                <label style={gs.label}>代墊人</label>
-                <select value={d.splitPayerId||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,splitPayerId:e.target.value||null,splitReceiverIds:[]}}))}
-                  style={{ ...gs.input, cursor:'pointer' }}>
-                  <option value="">無（自己的帳）</option>
-                  {members.map(m=><option key={m.uid} value={m.uid}>{m.uid===user.uid?`${m.displayName}（我）`:m.displayName}</option>)}
-                </select>
-              </div>
-              {d.splitPayerId && (
-                <div>
-                  <label style={gs.label}>幫誰代墊（可多選，包含代墊人自己）</label>
-                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                    {members.map(m=>{ const sel=(d.splitReceiverIds||[]).includes(m.uid); return (
-                      <button key={m.uid} type="button" onClick={()=>{ const cur=d.splitReceiverIds||[]; const next=sel?cur.filter(x=>x!==m.uid):[...cur,m.uid]; setWalletModal(p=>({...p,data:{...p.data,splitReceiverIds:next}})); }}
-                        style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blue:'transparent', color:sel?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                        {m.uid===user.uid?`${m.displayName}（我）`:m.displayName}
-                      </button>
-                    );})}
-                  </div>
-                  {(d.splitReceiverIds||[]).length>0&&d.amount&&(
-                    <div style={{ fontSize:11, color:C.blue, fontWeight:700, marginTop:6 }}>{perHint(d.amount,d.splitReceiverIds)}</div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+
 
           <div style={{ marginBottom:12 }}><label style={gs.label}>日期</label><input type="date" style={gs.input} value={d.date||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,date:e.target.value}}))} /></div>
           <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput key="wallet-note" style={gs.input} placeholder="選填" value={d.note||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,note:v}}))} /></div>
@@ -3153,33 +3123,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             else { setPersonalWalletItems(n); savePersonalWallet(n); }
             setWalletSelectedDate(dateFormatted);
 
-            // 代墊記錄：先刪舊的（如果是編輯），再建新的
-            if(!isShared && d.splitPayerId && (d.splitReceiverIds||[]).length>0 && d.amount){
-              const now = Date.now();
-              let baseRecords = [...splitRecords];
-              if(d.id) {
-                // 刪除這筆帳目相關的舊 splitRecords（用 createdAt 或 walletItemId 對應）
-                baseRecords = baseRecords.filter(r => r.walletItemId !== d.id);
-              }
-              const receivers = d.splitReceiverIds||[];
-              const total = Number(d.amount)||0;
-              const n2 = receivers.length;
-              const per = Math.floor(total/n2);
-              const rem = total - per*n2;
-              const sortedReceivers = [...receivers].sort(); // 固定排序決定誰多付
-              const newRecs = sortedReceivers.map((rid,i)=>({
-                id: now+i+100,
-                walletItemId: d.id || now, // 連結到帳目
-                payerId: d.splitPayerId,
-                receiverId: rid,
-                amount: per+(i<rem?1:0),
-                currency: d.currency||'JPY',
-                note: d.name||'',
-                createdAt: now,
-              }));
-              const nr = [...baseRecords, ...newRecs];
-              setSplitRecords(nr); saveSplitRecords(nr);
-            }
+
             setWalletModal({open:false,data:null}); setWalletCalc(false);
           }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${pageColor},${C.blue})`, color:'#fff' }}>確認儲存</button>
         </div>
@@ -3368,6 +3312,100 @@ function TripDetailScreen({ user, trip, onBack }) {
       {WalletModal()}
       {CurrencySettingsModal()}
       {MemoModal()}
+      {splitModal.open && (() => {
+        const sd = splitModal.data || {};
+        const receivers = sd.receiverIds || [];
+        const availCurrencies = tripCurrencies.length>0 ? tripCurrencies : ['JPY','KRW','TWD','USD'];
+        const SYM = { KRW:'₩', JPY:'¥', TWD:'$', USD:'$' };
+        const perHint = () => {
+          if(!sd.amount||receivers.length===0) return '';
+          const t=Number(sd.amount); const n=receivers.length;
+          const per=Math.floor(t/n); const rem=t-per*n;
+          return `每人 ${per.toLocaleString()}${rem>0?`（${rem} 人多付 1）`:''} ${sd.currency||'JPY'}`;
+        };
+        return (
+          <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:300 }}>
+            <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+                <div style={{ fontSize:16, fontWeight:800 }}>新增代墊</div>
+                <button onClick={() => setSplitModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
+              </div>
+
+              {/* 項目名稱 */}
+              <div style={{ marginBottom:14 }}>
+                <label style={gs.label}>項目名稱 *</label>
+                <ImeInput key="split-name" style={gs.input} placeholder="例：晚餐、交通" value={sd.note||''} onChange={v=>setSplitModal(p=>({...p,data:{...p.data,note:v}}))} />
+              </div>
+
+              {/* 付款人 */}
+              <div style={{ marginBottom:14 }}>
+                <label style={gs.label}>付款人（誰先付）</label>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {members.map(m=>(
+                    <button key={m.uid} type="button" onClick={()=>setSplitModal(p=>({...p,data:{...p.data,payerId:m.uid,receiverIds:[]}}))}
+                      style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${sd.payerId===m.uid?C.purple:C.border}`, backgroundColor:sd.payerId===m.uid?C.purple:'transparent', color:sd.payerId===m.uid?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                      {m.uid===user.uid?`${m.displayName}（我）`:m.displayName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 幫誰分攤 */}
+              <div style={{ marginBottom:14 }}>
+                <label style={gs.label}>幫誰分攤（可多選，包含付款人）</label>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {members.map(m=>{ const sel=receivers.includes(m.uid); return (
+                    <button key={m.uid} type="button" onClick={()=>{ const next=sel?receivers.filter(x=>x!==m.uid):[...receivers,m.uid]; setSplitModal(p=>({...p,data:{...p.data,receiverIds:next}})); }}
+                      style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${sel?C.green:C.border}`, backgroundColor:sel?C.greenSoft:'transparent', color:sel?C.green:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                      {m.uid===user.uid?`${m.displayName}（我）`:m.displayName}
+                    </button>
+                  );})}
+                </div>
+              </div>
+
+              {/* 金額 + 幣別 */}
+              <div style={{ display:'flex', gap:10, marginBottom:14 }}>
+                <div style={{ flex:1 }}>
+                  <label style={gs.label}>金額 *</label>
+                  <input type="number" value={sd.amount||''} onChange={e=>setSplitModal(p=>({...p,data:{...p.data,amount:e.target.value}}))}
+                    placeholder="0" style={{ ...gs.input }} />
+                </div>
+                <div style={{ flexShrink:0 }}>
+                  <label style={gs.label}>幣別</label>
+                  <select value={sd.currency||availCurrencies[0]} onChange={e=>setSplitModal(p=>({...p,data:{...p.data,currency:e.target.value}}))}
+                    style={{ ...gs.input, cursor:'pointer', width:'auto', padding:'12px 10px' }}>
+                    {availCurrencies.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              {receivers.length>0 && sd.amount && <div style={{ fontSize:11, color:C.green, fontWeight:700, marginBottom:14 }}>{perHint()}</div>}
+
+              <button onClick={() => {
+                if(!sd.note?.trim()||!sd.amount||!sd.payerId||receivers.length===0) return;
+                const now = Date.now();
+                const total = Number(sd.amount)||0;
+                const sortedReceivers = [...receivers].sort();
+                const n = sortedReceivers.length;
+                const per = Math.floor(total/n);
+                const rem = total - per*n;
+                const offset = Math.floor(now/1000) % n;
+                const newRecs = sortedReceivers.map((rid,i)=>({
+                  id: now+i+100,
+                  payerId: sd.payerId,
+                  receiverId: rid,
+                  amount: per + ((i-offset+n)%n < rem ? 1 : 0),
+                  currency: sd.currency||'JPY',
+                  note: sd.note||'',
+                  createdAt: now,
+                })).filter(r=>r.receiverId!==sd.payerId); // 付款人自己不用還自己
+                if(newRecs.length===0) return;
+                const nr=[...splitRecords,...newRecs]; setSplitRecords(nr); saveSplitRecords(nr);
+                setSplitModal({open:false,data:null});
+              }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff' }}>確認儲存</button>
+            </div>
+          </div>
+        );
+      })()}
       {shopBoughtModal && (
         <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16, backgroundColor:'rgba(45,42,36,0.5)' }}>
           <div style={{ ...gs.card, width:'100%', maxWidth:340 }}>
