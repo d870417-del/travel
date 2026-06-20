@@ -2038,6 +2038,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         <button onClick={() => setSplitModal({open:true, data:{payerId:user.uid, receiverIds:[], amount:'', currency:(tripCurrencies||['JPY'])[0]||'JPY', note:''}})}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${C.green}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
       </div>
+    </div>
     );
 
     // ── 明細頁（共用或個人）──
@@ -2221,7 +2222,8 @@ function TripDetailScreen({ user, trip, onBack }) {
   // ════════════════════════════════════════
   // 購物 Tab
   // ════════════════════════════════════════
-  const ShoppingTab = () => (
+  const ShoppingTab = () => {
+    return (
     <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
       {/* 篩選 */}
       <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:'10px 16px' }}>
@@ -2369,6 +2371,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       }} style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(190,24,93,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
     </div>
   );
+  };
 
   // ════════════════════════════════════════
   // 更多 Tab
@@ -2397,12 +2400,10 @@ function TripDetailScreen({ user, trip, onBack }) {
                 {sorted.map(memo => (
                   <div key={memo.id} style={{ ...gs.card, padding:'16px' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-                      <div>
-                            <div style={{ display:'flex', gap:6 }}>
-                          <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:memo.type==='checklist'?C.greenSoft:C.blueSoft, color:memo.type==='checklist'?C.green:C.blue, fontSize:11, fontWeight:700 }}>
-                            {memo.type==='checklist'?'✅ 清單':'📝 記事'}
-                          </span>
-                        </div>
+                      <div style={{ display:'flex', gap:6 }}>
+                        <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:memo.type==='checklist'?C.greenSoft:C.blueSoft, color:memo.type==='checklist'?C.green:C.blue, fontSize:11, fontWeight:700 }}>
+                          {memo.type==='checklist'?'✅ 清單':'📝 記事'}
+                        </span>
                       </div>
                       <div style={{ display:'flex', gap:6 }}>
                         <button onClick={() => { setMemoModal({open:true, data:memo, scope:moreSection}); setMemoPhoto(memo.photo||null); }}
