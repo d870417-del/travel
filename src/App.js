@@ -2452,12 +2452,12 @@ function TripDetailScreen({ user, trip, onBack }) {
 
     if (moreSection==='members') {
       const isAdmin = members.find(m=>m.uid===user.uid)?.role==='admin';
-      async function removeMember(m) {
+      const removeMember = async (m) => {
         try {
           await deleteDoc(doc(db,"tripMembers",`${trip.id}_${m.uid}`));
           setMembers(p=>p.filter(x=>x.uid!==m.uid));
         } catch(e) { console.error(e); }
-      }
+      };
       return (
         <div style={{ flex:1, overflowY:'auto' }}>
           <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
