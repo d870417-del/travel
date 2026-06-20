@@ -2412,14 +2412,19 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           )}
 
-          {/* 地區 */}
+          {/* 地區（有地區才顯示）*/}
           {cityDistricts.length > 0 && (
             <div style={{ marginBottom:14 }}>
               <label style={gs.label}>📍 地區</label>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 {cityDistricts.map(dist => (
-                  <button key={dist} type="button" onClick={() => toggleDistrict(dist)}
-                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.district===dist?'#BE185D':C.border}`, backgroundColor:d.district===dist?'#FDE8F3':C.bg, color:d.district===dist?'#BE185D':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                  <button key={dist} type="button" onClick={() => {
+                    const isRemoving = d.district === dist;
+                    setShoppingModal(p => ({...p, data:{...p.data,
+                      district: isRemoving ? '' : dist,
+                      branches: isRemoving ? [] : [{name:dist, mapUrl:''}],
+                    }}));
+                  }} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.district===dist?'#BE185D':C.border}`, backgroundColor:d.district===dist?'#FDE8F3':C.bg, color:d.district===dist?'#BE185D':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                     📍 {dist}
                   </button>
                 ))}
@@ -2427,20 +2432,27 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           )}
 
-          {/* 商場 */}
-          {districtMalls.length > 0 && (
-            <div style={{ marginBottom:14 }}>
-              <label style={gs.label}>🏪 商場</label>
-              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                {districtMalls.map(mall => (
-                  <button key={mall} type="button" onClick={() => setShoppingModal(p=>({...p,data:{...p.data,mall:p.data.mall===mall?'':mall}}))}
-                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.mall===mall?C.purple:C.border}`, backgroundColor:d.mall===mall?C.purpleSoft:C.bg, color:d.mall===mall?C.purple:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                    {mall}
-                  </button>
-                ))}
+          {/* 商場（跟地區並列，不依賴地區選擇）*/}
+          {(() => {
+            // 取得所有商場：有選地區就只顯示那個地區的，沒選就顯示全部
+            const allMalls = d.district
+              ? ((mallsMap[activeCity]||{})[d.district]||[])
+              : Object.values(mallsMap[activeCity]||{}).flat();
+            if (allMalls.length === 0) return null;
+            return (
+              <div style={{ marginBottom:14 }}>
+                <label style={gs.label}>🏪 商場</label>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {allMalls.map(mall => (
+                    <button key={mall} type="button" onClick={() => setShoppingModal(p=>({...p,data:{...p.data,mall:p.data.mall===mall?'':mall}}))}
+                      style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.mall===mall?C.purple:C.border}`, backgroundColor:d.mall===mall?C.purpleSoft:C.bg, color:d.mall===mall?C.purple:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                      {mall}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* 商品名稱 */}
           <div style={{ marginBottom:14 }}>
@@ -2729,7 +2741,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                 <div>
                   <label style={gs.label}>幫誰代墊（可多選）</label>
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
-                    {members.filter(m=>m.uid!==d.splitPayerId).map(m=>{ const sel=(d.splitReceiverIds||[]).includes(m.uid); return (
+                    {members.map(m=>{ const sel=(d.splitReceiverIds||[]).includes(m.uid); return (
                       <button key={m.uid} type="button" onClick={()=>{ const cur=d.splitReceiverIds||[]; const next=sel?cur.filter(x=>x!==m.uid):[...cur,m.uid]; setWalletModal(p=>({...p,data:{...p.data,splitReceiverIds:next}})); }}
                         style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blue:'transparent', color:sel?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                         {m.uid===user.uid?`${m.displayName}（我）`:m.displayName}
