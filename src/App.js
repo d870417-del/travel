@@ -14,6 +14,8 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  deleteDoc,
+  updateDoc,
   query,
   where,
   serverTimestamp,
@@ -270,23 +272,28 @@ function TripListScreen({ user, onEnterTrip }) {
     try {
       await deleteDoc(doc(db, "tripMembers", `${trip.id}_${user.uid}`));
       setTrips(p => p.filter(t => t.id !== trip.id));
-      setTripToDelete(null);
-    } catch(e) { console.error(e); }
+    } catch(e) { console.error('leaveTrip error:', e); }
+    setTripToDelete(null);
   }
 
   async function deleteTrip(trip) {
     try {
       // 刪除所有成員
       const mSnap = await getDocs(query(collection(db, "tripMembers"), where("tripId", "==", trip.id)));
-      await Promise.all(mSnap.docs.map(d => deleteDoc(d.ref)));
-      // 刪除旅程資料
-      const dataKeys = ['itinerary','food','foodOptions','shopping','shopOptions','wallet','todos','notes','splitRecords'];
-      await Promise.all(dataKeys.map(k => deleteDoc(doc(db, "tripData", `${trip.id}_${k}`))));
+      for (const d of mSnap.docs) { try { await deleteDoc(d.ref); } catch(e) {} }
+      // 刪除旅程資料（部分可能不存在，忽略錯誤）
+      const dataKeys = ['itinerary','food','foodOptions','shopping','shopOptions','wallet','todos','notes','splitRecords','currencies'];
+      for (const k of dataKeys) { try { await deleteDoc(doc(db, "tripData", `${trip.id}_${k}`)); } catch(e) {} }
       // 刪除旅程本體
       await deleteDoc(doc(db, "trips", trip.id));
       setTrips(p => p.filter(t => t.id !== trip.id));
       setTripToDelete(null);
-    } catch(e) { console.error(e); }
+    } catch(e) {
+      console.error('deleteTrip error:', e);
+      // 就算有錯誤也關閉 dialog，讓用戶重試
+      setTripToDelete(null);
+      alert('刪除時發生錯誤：' + e.message);
+    }
   }
 
   async function loadTrips() {
@@ -1425,7 +1432,18 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           )}
         </div>
-        <button onClick={() => setFoodModal({open:true,data:{ city:foodSelectedCity!=='全部城市'?foodSelectedCity:(foodOptions.cities||[])[0]||'', districts:[...foodSelectedDistricts], branches:foodSelectedDistricts.map(d=>({name:d,mapUrl:''})), foodType:foodSelectedType!=='全部食物'?foodSelectedType:'', visited:false }})}
+        <button onClick={() => {
+          const fc = foodOptions.cities||[];
+          const autoCity = fc.length===1 ? fc[0] : (foodSelectedCity!=='全部城市'?foodSelectedCity:'');
+          const initDistricts = [...foodSelectedDistricts];
+          setFoodModal({open:true,data:{
+            city: autoCity,
+            districts: initDistricts,
+            branches: initDistricts.map(d=>({name:d,mapUrl:''})),
+            foodType: foodSelectedType!=='全部食物'?foodSelectedType:'',
+            visited: false,
+          }});
+        }}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#D97706,#F59E0B)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(217,119,6,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
       </div>
     );
@@ -2072,12 +2090,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     const autoCity = cities.length === 1 ? cities[0] : null;
     const activeCity = d.city || autoCity || '';
     const cityDistricts = activeCity ? (foodOptions.districts||{})[activeCity]||[] : [];
-    // 城市只有一個時，自動帶入城市
-    React.useEffect(() => {
-      if (cities.length === 1 && !d.city) {
-        setFoodModal(p=>({...p,data:{...p.data,city:cities[0]}}));
-      }
-    }, []);
+    // 城市只有一個時自動帶入（在開啟 modal 時已處理）
     const districts = d.districts || [];
     const branches = d.branches || [];
 
