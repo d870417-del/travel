@@ -23,26 +23,26 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
-// ─── 顏色主題（米色底 + 藍綠紫）───────────────────────────────
+// ─── 顏色主題（旅遊海洋風：青藍 + 海綠）──────────────────────
 const C = {
-  bg: "#F5F0E8",         // 米色底
-  surface: "#FDFAF4",    // 卡片白米
-  border: "#E2D9C8",     // 邊框
-  blue: "#4A7FD4",       // 主藍
-  blueSoft: "#EBF1FB",   // 淡藍背景
-  green: "#3DAD8A",      // 主綠
-  greenSoft: "#E8F7F2",  // 淡綠背景
-  purple: "#8B5CF6",     // 主紫
-  purpleSoft: "#F3EFFE", // 淡紫背景
-  text: "#2D2A24",       // 深棕文字
-  textMuted: "#9E9484",  // 淡棕文字
-  danger: "#D95B5B",     // 錯誤紅
-  dangerSoft: "#FDEAEA",
+  bg: "#F4F0E6",         // 溫暖沙色底
+  surface: "#FDFAF5",    // 米白卡片
+  border: "#DDD5C0",     // 暖邊框
+  blue: "#2A8FA5",       // 海洋青藍（主色）
+  blueSoft: "#E0F3F8",   // 淡青藍背景
+  green: "#3DAD8A",      // 海洋綠（收入、成功）
+  greenSoft: "#E6F5EF",  // 淡綠背景
+  purple: "#4E82A0",     // 深海藍（取代紫色）
+  purpleSoft: "#E8F2F8", // 淡深海藍背景
+  text: "#2A2520",       // 深暖棕文字
+  textMuted: "#9C9080",  // 淡棕文字
+  danger: "#C85A4A",     // 珊瑚紅
+  dangerSoft: "#FDECEA",
   success: "#3DAD8A",
-  successSoft: "#E8F7F2",
+  successSoft: "#E6F5EF",
 };
 
-const TRIP_COLORS = [C.blue, C.green, C.purple, "#E0875A", "#5AB4E0", "#AD5BBA", "#5ABF6B", "#D4A044"];
+const TRIP_COLORS = ["#2A8FA5","#3DAD8A","#D4873A","#4E82A0","#8BA888","#C47A5A","#5BAECF","#7A9E6B"];
 const TRIP_EMOJIS = ["✈️", "🏖️", "🗻", "🏙️", "🌏", "🚂", "🛳️", "🏕️", "🎡", "🗼", "🌸", "🍜"];
 
 const gs = {
@@ -90,9 +90,92 @@ const gs = {
 // ─── Loading ──────────────────────────────────────────────────
 function LoadingScreen() {
   return (
-    <div style={{ ...gs.app, alignItems: "center", justifyContent: "center" }}>
-      <div style={{ fontSize: 40, marginBottom: 10 }}>🧳</div>
-      <div style={{ color: C.textMuted, fontSize: 14 }}>載入中...</div>
+    <div style={{ ...gs.app, alignItems:"center", justifyContent:"center" }}>
+      <style>{`
+        @keyframes trvBob {
+          0%,100% { transform: translateY(0px); }
+          50%      { transform: translateY(-6px); }
+        }
+        @keyframes trvLegL {
+          0%,100% { transform: rotate(-28deg); }
+          50%     { transform: rotate(20deg); }
+        }
+        @keyframes trvLegR {
+          0%,100% { transform: rotate(20deg); }
+          50%     { transform: rotate(-28deg); }
+        }
+        @keyframes trvArm {
+          0%,100% { transform: rotate(22deg); }
+          50%     { transform: rotate(-8deg); }
+        }
+        @keyframes trvDots {
+          0%   { opacity:0.3; } 33%  { opacity:1; }
+          66%  { opacity:0.3; } 100% { opacity:0.3; }
+        }
+        .trv-body { animation: trvBob 0.85s ease-in-out infinite; }
+        .trv-ll   { animation: trvLegL 0.85s ease-in-out infinite; transform-origin: 82px 50px; }
+        .trv-lr   { animation: trvLegR 0.85s ease-in-out infinite; transform-origin: 82px 50px; }
+        .trv-arm  { animation: trvArm  0.85s ease-in-out infinite; transform-origin: 82px 34px; }
+        .trv-d1   { animation: trvDots 1.2s ease-in-out infinite 0s; }
+        .trv-d2   { animation: trvDots 1.2s ease-in-out infinite 0.4s; }
+        .trv-d3   { animation: trvDots 1.2s ease-in-out infinite 0.8s; }
+      `}</style>
+
+      <div className="trv-body">
+        <svg width="160" height="88" viewBox="0 0 160 88">
+          {/* ── 行李箱 ── */}
+          <rect x="14" y="36" width="28" height="23" rx="4"
+            fill="none" stroke={C.blue} strokeWidth="2.5" strokeLinejoin="round"/>
+          {/* 把手 */}
+          <path d="M 21 36 L 21 29 Q 21 26 28 26 Q 35 26 35 29 L 35 36"
+            fill="none" stroke={C.blue} strokeWidth="2" strokeLinecap="round"/>
+          {/* 中線 */}
+          <line x1="14" y1="48" x2="42" y2="48"
+            stroke={C.blue} strokeWidth="1.5" opacity="0.45"/>
+          {/* 輪子 */}
+          <circle cx="20" cy="62" r="3.5"
+            fill="none" stroke={C.blue} strokeWidth="2"/>
+          <circle cx="36" cy="62" r="3.5"
+            fill="none" stroke={C.blue} strokeWidth="2"/>
+
+          {/* ── 拉繩 ── */}
+          <line x1="42" y1="48" x2="64" y2="44"
+            stroke={C.blue} strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+
+          {/* ── 人 ── */}
+          {/* 頭 */}
+          <circle cx="82" cy="16" r="9.5"
+            fill="none" stroke={C.blue} strokeWidth="2.5"/>
+          {/* 身體 */}
+          <line x1="82" y1="26" x2="82" y2="50"
+            stroke={C.blue} strokeWidth="2.5" strokeLinecap="round"/>
+          {/* 左手（拉行李） */}
+          <line x1="82" y1="34" x2="64" y2="44"
+            stroke={C.blue} strokeWidth="2" strokeLinecap="round"/>
+          {/* 右手（擺動） */}
+          <g className="trv-arm">
+            <line x1="82" y1="34" x2="97" y2="43"
+              stroke={C.blue} strokeWidth="2" strokeLinecap="round"/>
+          </g>
+          {/* 左腳 */}
+          <g className="trv-ll">
+            <line x1="82" y1="50" x2="82" y2="73"
+              stroke={C.blue} strokeWidth="2.5" strokeLinecap="round"/>
+          </g>
+          {/* 右腳 */}
+          <g className="trv-lr">
+            <line x1="82" y1="50" x2="82" y2="73"
+              stroke={C.blue} strokeWidth="2.5" strokeLinecap="round"/>
+          </g>
+        </svg>
+      </div>
+
+      <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:14, color:C.textMuted, fontSize:14 }}>
+        <span>載入中</span>
+        <span className="trv-d1" style={{ fontWeight:800 }}>．</span>
+        <span className="trv-d2" style={{ fontWeight:800 }}>．</span>
+        <span className="trv-d3" style={{ fontWeight:800 }}>．</span>
+      </div>
     </div>
   );
 }
