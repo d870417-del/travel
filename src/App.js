@@ -1180,6 +1180,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [inviteVisible, setInviteVisible] = useState(false);
   const [copied, setCopied] = useState(false);
   const [splitRestorePrompt, setSplitRestorePrompt] = useState(null); // { item } 代墊已還記錄刪除後詢問是否還原
+  const [settleCurrencyPrompt, setSettleCurrencyPrompt] = useState(null); // { amount, currency, twdAmount, onChoose }
 
   useEffect(() => {
     loadAll();
@@ -1949,7 +1950,9 @@ function TripDetailScreen({ user, trip, onBack }) {
                       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                         {g.items.map((t, ti) => {
                           const sk = t.from+t.to+t.currency;
-                          const settleOne = () => {
+                          const settleOne = (chosenAmt, chosenCur) => {
+                            const actualAmt = typeof chosenAmt==='number' ? chosenAmt : t.amount;
+                            const actualCur = chosenCur || t.currency;
                             const now = Date.now();
                             const newRecords = splitRecords.map(sr => {
                               const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
@@ -1968,15 +1971,16 @@ function TripDetailScreen({ user, trip, onBack }) {
                             const otherUid=isIPaying1?g.to:g.from;
                             const counterM1=members.find(m=>m.uid===otherUid)||{displayName:'對方'};
                             const myName1=user.displayName||user.email||'我';
+                            const curNote = actualCur!==t.currency ? `（折合 NT$${actualAmt.toLocaleString()}）` : '';
                             // 我自己的帳務
-                            const myLabel=isIPaying1?`還款・${itemNote}（還給 ${counterM1.displayName}）`:`收款・${itemNote}（${counterM1.displayName} 還）`;
+                            const myLabel=isIPaying1?`還款・${itemNote}（還給 ${counterM1.displayName}）${curNote}`:`收款・${itemNote}（${counterM1.displayName} 還）${curNote}`;
                             const myType=isIPaying1?'支出':'存入';
-                            const myEntry={id:now+998,name:myLabel,amount:t.amount,currency:t.currency,type:myType,date:mmdd,note:'代墊結清',counterpartUid:otherUid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                            const myEntry={id:now+998,name:myLabel,amount:actualAmt,currency:actualCur,type:myType,date:mmdd,note:'代墊結清',counterpartUid:otherUid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                             const np=[...personalWalletItems,myEntry];setPersonalWalletItems(np);savePersonalWallet(np);
                             // 對方的帳務（用對方的 uid 存到對方的個人帳）
-                            const otherLabel=isIPaying1?`收款・${itemNote}（${myName1} 還）`:`還款・${itemNote}（還給 ${myName1}）`;
+                            const otherLabel=isIPaying1?`收款・${itemNote}（${myName1} 還）${curNote}`:`還款・${itemNote}（還給 ${myName1}）${curNote}`;
                             const otherType=isIPaying1?'存入':'支出';
-                            const otherEntry={id:now+999,name:otherLabel,amount:t.amount,currency:t.currency,type:otherType,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                            const otherEntry={id:now+999,name:otherLabel,amount:actualAmt,currency:actualCur,type:otherType,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                             getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`)).then(snap=>{
                               const items=snap.exists()?snap.data().items||[]:[];
                               setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`), { items:JSON.parse(JSON.stringify([...items,otherEntry])), updatedAt:serverTimestamp() });
@@ -1990,7 +1994,13 @@ function TripDetailScreen({ user, trip, onBack }) {
                                 </div>
                                 <div style={{ fontSize:10, color:C.textMuted }}>≈ NT${toTWD(t.amount,t.currency).toLocaleString()}</div>
                               </div>
-                              <button onClick={()=>setConfirmDel({title:'確認結清',message:`確定結清 ${SYM[t.currency]||''}${t.amount.toLocaleString()} ${t.currency}？結清後會自動記入個人帳務。`,fn:settleOne})} style={{ padding:'7px 14px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+                              <button onClick={()=>{
+                                if(t.currency==='TWD'){
+                                  setConfirmDel({title:'確認結清',message:`確定結清 $${t.amount.toLocaleString()} TWD？結清後會自動記入個人帳務。`,fn:()=>settleOne()});
+                                } else {
+                                  setSettleCurrencyPrompt({amount:t.amount, currency:t.currency, twdAmount:toTWD(t.amount,t.currency), onChoose:(a,c)=>settleOne(a,c)});
+                                }
+                              }} style={{ padding:'7px 14px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
                                 結清
                               </button>
                             </div>
@@ -2004,6 +2014,17 @@ function TripDetailScreen({ user, trip, onBack }) {
                           const now = Date.now();
                           let newRecords = [...splitRecords];
                           const newEntries = [];
+                          // 全部結清：把所有幣別折算成台幣，合併成一筆
+                          const totalTWD = g.items.reduce((s,t)=>s+toTWD(t.amount,t.currency),0);
+                          const allNotes = [...new Set(g.items.flatMap(t=>
+                            splitRecords.filter(r=>!r.settled&&((r.payerId===t.to&&r.receiverId===t.from)||(r.payerId===t.from&&r.receiverId===t.to))&&r.currency===t.currency).map(r=>r.note).filter(Boolean)
+                          ))].join('・')||'代墊';
+                          const isIPaying2 = g.from===user.uid;
+                          const othUid2 = isIPaying2?g.to:g.from;
+                          const ctrM2 = members.find(m=>m.uid===othUid2)||{displayName:'對方'};
+                          const myName2 = user.displayName||user.email||'我';
+                          const today2=new Date(now);
+                          const mmdd2=`${String(today2.getMonth()+1).padStart(2,'0')}/${String(today2.getDate()).padStart(2,'0')}`;
                           g.items.forEach(t => {
                             const sk = t.from+t.to+t.currency;
                             newRecords = newRecords.map(sr => {
@@ -2012,25 +2033,17 @@ function TripDetailScreen({ user, trip, onBack }) {
                               return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:now} : sr;
                             });
                             setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
-                            const today=new Date(now);
-                            const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
-                            const relNotes2=[...new Set(splitRecords.filter(r=>!r.settled&&((r.payerId===t.to&&r.receiverId===t.from)||(r.payerId===t.from&&r.receiverId===t.to))&&r.currency===t.currency).map(r=>r.note).filter(Boolean))];
-                            const itNote2=relNotes2.join('・')||'代墊';
-                            const isIPaying2=g.from===user.uid;
-                            const othUid=isIPaying2?g.to:g.from;
-                            const ctrM2=members.find(m=>m.uid===othUid)||{displayName:'對方'};
-                            const myName2=user.displayName||user.email||'我';
-                            const myLbl=isIPaying2?`還款・${itNote2}（還給 ${ctrM2.displayName}）`:`收款・${itNote2}（${ctrM2.displayName} 還）`;
-                            const myTyp=isIPaying2?'支出':'存入';
-                            newEntries.push({id:now+newEntries.length+999,name:myLbl,amount:t.amount,currency:t.currency,type:myTyp,date:mmdd,note:'代墊結清',counterpartUid:othUid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now});
-                            // 對方帳務
-                            const othLbl=isIPaying2?`收款・${itNote2}（${myName2} 還）`:`還款・${itNote2}（還給 ${myName2}）`;
-                            const othTyp=isIPaying2?'存入':'支出';
-                            const othEntry={id:now+newEntries.length+9990,name:othLbl,amount:t.amount,currency:t.currency,type:othTyp,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
-                            getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid}`)).then(snap=>{
-                              const its=snap.exists()?snap.data().items||[]:[];
-                              setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid}`),{items:JSON.parse(JSON.stringify([...its,othEntry])),updatedAt:serverTimestamp()});
-                            });
+                          });
+                          // 只寫一筆台幣合計
+                          const myLbl=isIPaying2?`還款・${allNotes}（還給 ${ctrM2.displayName}）（折合台幣）`:`收款・${allNotes}（${ctrM2.displayName} 還）（折合台幣）`;
+                          const myTyp=isIPaying2?'支出':'存入';
+                          newEntries.push({id:now+999,name:myLbl,amount:totalTWD,currency:'TWD',type:myTyp,date:mmdd2,note:'代墊結清',counterpartUid:othUid2,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now});
+                          const othLbl=isIPaying2?`收款・${allNotes}（${myName2} 還）（折合台幣）`:`還款・${allNotes}（還給 ${myName2}）（折合台幣）`;
+                          const othTyp=isIPaying2?'存入':'支出';
+                          const othEntry={id:now+9990,name:othLbl,amount:totalTWD,currency:'TWD',type:othTyp,date:mmdd2,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                          getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`)).then(snap=>{
+                            const its=snap.exists()?snap.data().items||[]:[];
+                            setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`),{items:JSON.parse(JSON.stringify([...its,othEntry])),updatedAt:serverTimestamp()});
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
                           const np=[...personalWalletItems,...newEntries]; setPersonalWalletItems(np); savePersonalWallet(np);
@@ -2038,43 +2051,52 @@ function TripDetailScreen({ user, trip, onBack }) {
                           ✓ 全部結清
                         </button>
                       )}
-                      {g.items.length === 1 && (
-                        <button onClick={() => setConfirmDel({title:'確認結清',message:`確定結清？結清後會自動記入個人帳務。`,fn:()=>{
+                      {g.items.length === 1 && (() => {
+                        const t3 = g.items[0];
+                        const doSettle3 = (chosenAmt, chosenCur) => {
+                          const actualAmt3 = typeof chosenAmt==='number' ? chosenAmt : t3.amount;
+                          const actualCur3 = chosenCur || t3.currency;
                           const now = Date.now();
-                          const t = g.items[0];
-                          const sk = t.from+t.to+t.currency;
+                          const sk3 = t3.from+t3.to+t3.currency;
                           const newRecords = splitRecords.map(sr => {
-                            const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
-                                             (sr.payerId===t.from&&sr.receiverId===t.to);
-                            return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:now} : sr;
+                            const isRelated = (sr.payerId===t3.to&&sr.receiverId===t3.from)||(sr.payerId===t3.from&&sr.receiverId===t3.to);
+                            return isRelated && sr.currency===t3.currency ? {...sr,settled:true,settledAt:now} : sr;
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
-                          setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
-                          // 寫入個人帳務
+                          setTransferStates(p=>{ const np={...p}; delete np[sk3]; return np; });
                           const today=new Date(now);
                           const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
-                          const relNotes3=[...new Set(splitRecords.filter(r=>!r.settled&&((r.payerId===t.to&&r.receiverId===t.from)||(r.payerId===t.from&&r.receiverId===t.to))&&r.currency===t.currency).map(r=>r.note).filter(Boolean))];
+                          const relNotes3=[...new Set(splitRecords.filter(r=>!r.settled&&((r.payerId===t3.to&&r.receiverId===t3.from)||(r.payerId===t3.from&&r.receiverId===t3.to))&&r.currency===t3.currency).map(r=>r.note).filter(Boolean))];
                           const itNote3=relNotes3.join('・')||'代墊';
                           const isIPaying3=g.from===user.uid;
                           const othUid2=isIPaying3?g.to:g.from;
                           const ctrM3=members.find(m=>m.uid===othUid2)||{displayName:'對方'};
                           const myName3=user.displayName||user.email||'我';
-                          const myLbl2=isIPaying3?`還款・${itNote3}（還給 ${ctrM3.displayName}）`:`收款・${itNote3}（${ctrM3.displayName} 還）`;
+                          const curNote3 = actualCur3!==t3.currency ? `（折合 NT$${actualAmt3.toLocaleString()}）` : '';
+                          const myLbl2=isIPaying3?`還款・${itNote3}（還給 ${ctrM3.displayName}）${curNote3}`:`收款・${itNote3}（${ctrM3.displayName} 還）${curNote3}`;
                           const myTyp2=isIPaying3?'支出':'存入';
-                          const myEntry2={id:now+998,name:myLbl2,amount:t.amount,currency:t.currency,type:myTyp2,date:mmdd,note:'代墊結清',counterpartUid:othUid2,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                          const myEntry2={id:now+998,name:myLbl2,amount:actualAmt3,currency:actualCur3,type:myTyp2,date:mmdd,note:'代墊結清',counterpartUid:othUid2,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                           const np=[...personalWalletItems,myEntry2];setPersonalWalletItems(np);savePersonalWallet(np);
-                          // 對方帳務
-                          const othLbl2=isIPaying3?`收款・${itNote3}（${myName3} 還）`:`還款・${itNote3}（還給 ${myName3}）`;
+                          const othLbl2=isIPaying3?`收款・${itNote3}（${myName3} 還）${curNote3}`:`還款・${itNote3}（還給 ${myName3}）${curNote3}`;
                           const othTyp2=isIPaying3?'存入':'支出';
-                          const othEntry2={id:now+999,name:othLbl2,amount:t.amount,currency:t.currency,type:othTyp2,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                          const othEntry2={id:now+999,name:othLbl2,amount:actualAmt3,currency:actualCur3,type:othTyp2,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                           getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`)).then(snap=>{
                             const its=snap.exists()?snap.data().items||[]:[];
                             setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`),{items:JSON.parse(JSON.stringify([...its,othEntry2])),updatedAt:serverTimestamp()});
                           });
-                        }})} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                          ✓ 標記結清
-                        </button>
-                      )}
+                        };
+                        return (
+                          <button onClick={()=>{
+                            if(t3.currency==='TWD'){
+                              setConfirmDel({title:'確認結清',message:`確定結清？結清後會自動記入個人帳務。`,fn:()=>doSettle3()});
+                            } else {
+                              setSettleCurrencyPrompt({amount:t3.amount,currency:t3.currency,twdAmount:toTWD(t3.amount,t3.currency),onChoose:(a,c)=>doSettle3(a,c)});
+                            }
+                          }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                            ✓ 標記結清
+                          </button>
+                        );
+                      })()}
                     </div>
                   );
                 });
@@ -3762,6 +3784,33 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
       {DatePickerModal()}
+      {/* 結清幣別選擇（外幣才出現）*/}
+      {settleCurrencyPrompt && (
+        <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+          <div onClick={()=>setSettleCurrencyPrompt(null)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(45,42,36,0.5)' }} />
+          <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:320 }}>
+            <div style={{ fontSize:15, fontWeight:800, marginBottom:4 }}>以哪種幣別結清？</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginBottom:18 }}>
+              選外幣：帳務記錄使用原本幣別<br/>
+              選台幣：記錄為台幣折算金額
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <button onClick={()=>{ settleCurrencyPrompt.onChoose(settleCurrencyPrompt.amount, settleCurrencyPrompt.currency); setSettleCurrencyPrompt(null); }}
+                style={{ padding:'14px', border:`1.5px solid ${C.green}`, borderRadius:12, backgroundColor:C.greenSoft, color:C.green, fontSize:14, fontWeight:800, cursor:'pointer', textAlign:'left' }}>
+                <div>外幣結清</div>
+                <div style={{ fontSize:12, fontWeight:400, marginTop:2, color:C.textMuted }}>記錄為 {settleCurrencyPrompt.currency === 'JPY' ? '¥' : settleCurrencyPrompt.currency === 'KRW' ? '₩' : ''}{settleCurrencyPrompt.amount.toLocaleString()} {settleCurrencyPrompt.currency}</div>
+              </button>
+              <button onClick={()=>{ settleCurrencyPrompt.onChoose(settleCurrencyPrompt.twdAmount, 'TWD'); setSettleCurrencyPrompt(null); }}
+                style={{ padding:'14px', border:`1.5px solid ${C.blue}`, borderRadius:12, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer', textAlign:'left' }}>
+                <div>台幣結清</div>
+                <div style={{ fontSize:12, fontWeight:400, marginTop:2, color:C.textMuted }}>記錄為 NT${settleCurrencyPrompt.twdAmount.toLocaleString()} TWD</div>
+              </button>
+              <button onClick={()=>setSettleCurrencyPrompt(null)}
+                style={{ padding:'11px', border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:600, cursor:'pointer' }}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 代墊已還刪除後詢問是否還原分攤 */}
       {splitRestorePrompt && (
         <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
