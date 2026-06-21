@@ -2165,11 +2165,41 @@ function TripDetailScreen({ user, trip, onBack }) {
                           }})} style={{ padding:'4px 7px', border:`1px solid ${C.border}`, borderRadius:7, backgroundColor:C.bg, color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
                           <button onClick={() => setConfirmDel({
                             title:'刪除代墊',
-                            message:`確定刪除「${r0.note||'代墊'}」？`,
+                            message:`確定刪除「${r0.note||'代墊'}」？\n相關的個人帳務還款記錄也會一併刪除。`,
                             fn: () => {
                               const ids = new Set(recs.map(r=>String(r.id)));
                               const nr = splitRecords.filter(r=>!ids.has(String(r.id)));
                               setSplitRecords(nr); saveSplitRecords(nr);
+
+                              // 刪除所有相關個人帳務記錄（已還/結清時寫入的）
+                              const settledTimes = recs.map(r=>r.settledAt).filter(Boolean);
+                              if(settledTimes.length > 0) {
+                                const isRelated = (pw) =>
+                                  (pw.note==='代墊已還'||pw.note==='代墊結清') &&
+                                  settledTimes.some(st=>Math.abs((pw.createdAt||0)-st)<5000);
+
+                                // 自己的個人帳務
+                                const myFiltered = personalWalletItems.filter(pw=>!isRelated(pw));
+                                if(myFiltered.length < personalWalletItems.length){
+                                  setPersonalWalletItems(myFiltered); savePersonalWallet(myFiltered);
+                                }
+
+                                // 其他所有涉及成員的個人帳務
+                                const involvedUids = [...new Set([
+                                  ...personalWalletItems.filter(isRelated).map(e=>e.counterpartUid),
+                                  ...recs.map(r=>r.payerId),
+                                  ...recs.map(r=>r.receiverId),
+                                ])].filter(uid=>uid&&uid!==user.uid);
+
+                                involvedUids.forEach(uid=>{
+                                  getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${uid}`)).then(snap=>{
+                                    if(!snap.exists()) return;
+                                    const its=snap.data().items||[];
+                                    const f=its.filter(pw=>!isRelated(pw));
+                                    if(f.length<its.length) setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${uid}`),{items:JSON.parse(JSON.stringify(f)),updatedAt:serverTimestamp()});
+                                  });
+                                });
+                              }
                             }
                           })} style={{ padding:'4px 7px', border:`1px solid ${C.danger}33`, borderRadius:7, backgroundColor:'#FDE8E8', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                         </div>
@@ -2212,30 +2242,37 @@ function TripDetailScreen({ user, trip, onBack }) {
                                   ↩ 撤銷
                                 </button>
                               ) : !isSelf ? (
-                                /* 付款人或欠款人都可以按已還 */
+                                /* 付款人或欠款人都可以按標記已還 */
                                 <button onClick={() => {
-                                  const now = Date.now();
-                                  const newRecords = splitRecords.map(sr =>
-                                    (String(sr.id)===String(r.id)) ? {...sr, settled:true, settledAt:now} : sr
-                                  );
-                                  setSplitRecords(newRecords); saveSplitRecords(newRecords);
-                                  // 寫入雙方個人帳務
-                                  const today = new Date(now);
-                                  const mmdd = `${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
-                                  const itemNote = r.note || '代墊';
-                                  const iAmPayer = user.uid === r.payerId;
-                                  const otherUid = iAmPayer ? r.receiverId : r.payerId;
-                                  const counterMp=members.find(m=>m.uid===otherUid)||{displayName:'對方'};
-                                  const payerMp=members.find(m=>m.uid===r.payerId)||{displayName:'?'};
-                                  const myNameP=user.displayName||user.email||'我';
-                                  const myEntry = { id:now+10, name:iAmPayer?`收款・${itemNote}（${counterMp.displayName} 還）`:`還款・${itemNote}（還給 ${payerMp.displayName}）`, amount:r.amount, currency:r.currency, type:iAmPayer?'存入':'支出', date:mmdd, note:'代墊已還', counterpartUid:otherUid, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
-                                  const otherEntry = { id:now+11, name:iAmPayer?`還款・${itemNote}（還給 ${myNameP}）`:`收款・${itemNote}（${myNameP} 還）`, amount:r.amount, currency:r.currency, type:iAmPayer?'支出':'存入', date:mmdd, note:'代墊已還', counterpartUid:user.uid, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
-                                  const np = [...personalWalletItems, myEntry];
-                                  setPersonalWalletItems(np); savePersonalWallet(np);
-                                  getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`)).then(snap=>{
-                                    const its = snap.exists() ? snap.data().items||[] : [];
-                                    setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`), { items:JSON.parse(JSON.stringify([...its,otherEntry])), updatedAt:serverTimestamp() });
-                                  });
+                                  const doMarkPaid = (chosenAmt, chosenCur) => {
+                                    const now = Date.now();
+                                    const newRecords = splitRecords.map(sr =>
+                                      (String(sr.id)===String(r.id)) ? {...sr, settled:true, settledAt:now} : sr
+                                    );
+                                    setSplitRecords(newRecords); saveSplitRecords(newRecords);
+                                    const today = new Date(now);
+                                    const mmdd = `${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
+                                    const itemNote = r.note || '代墊';
+                                    const iAmPayer = user.uid === r.payerId;
+                                    const otherUid = iAmPayer ? r.receiverId : r.payerId;
+                                    const counterMp=members.find(m=>m.uid===otherUid)||{displayName:'對方'};
+                                    const payerMp=members.find(m=>m.uid===r.payerId)||{displayName:'?'};
+                                    const myNameP=user.displayName||user.email||'我';
+                                    const origInfoR = chosenCur!==r.currency ? `原 ${SYM[r.currency]||''}${r.amount.toLocaleString()} ${r.currency}` : undefined;
+                                    const myEntry = { id:now+10, name:iAmPayer?`收款・${itemNote}（${counterMp.displayName} 還）`:`還款・${itemNote}（還給 ${payerMp.displayName}）`, amount:chosenAmt, currency:chosenCur, type:iAmPayer?'存入':'支出', date:mmdd, note:'代墊已還', ...(origInfoR?{origInfo:origInfoR}:{}), counterpartUid:otherUid, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                                    const otherEntry = { id:now+11, name:iAmPayer?`還款・${itemNote}（還給 ${myNameP}）`:`收款・${itemNote}（${myNameP} 還）`, amount:chosenAmt, currency:chosenCur, type:iAmPayer?'支出':'存入', date:mmdd, note:'代墊已還', ...(origInfoR?{origInfo:origInfoR}:{}), counterpartUid:user.uid, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                                    const np = [...personalWalletItems, myEntry];
+                                    setPersonalWalletItems(np); savePersonalWallet(np);
+                                    getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`)).then(snap=>{
+                                      const its = snap.exists() ? snap.data().items||[] : [];
+                                      setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`), { items:JSON.parse(JSON.stringify([...its,otherEntry])), updatedAt:serverTimestamp() });
+                                    });
+                                  };
+                                  if(r.currency==='TWD'){
+                                    doMarkPaid(r.amount, 'TWD');
+                                  } else {
+                                    setSettleCurrencyPrompt({ amount:r.amount, currency:r.currency, twdAmount:toTWD(r.amount,r.currency), onChoose:(a,c)=>doMarkPaid(a,c) });
+                                  }
                                 }} style={{ fontSize:11, color:C.blue, padding:'3px 8px', borderRadius:6, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, cursor:'pointer', fontWeight:600, flexShrink:0 }}>
                                   標記已還
                                 </button>
@@ -3823,7 +3860,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             <div style={{ fontSize:28, marginBottom:10 }}>🗑</div>
             <div style={{ fontSize:15, fontWeight:700, marginBottom:6 }}>確定刪除這筆記錄？</div>
             <div style={{ fontSize:13, color:C.textMuted, marginBottom:6 }}>{splitRestorePrompt.item?.name}</div>
-            <div style={{ fontSize:12, color:C.textMuted, marginBottom:20 }}>對方的對應記錄也會一起刪除</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginBottom:20 }}>⚠️ 自己和對方的個人帳務記錄都會刪除</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               <button onClick={()=>{
                 splitRestorePrompt.onDelete?.();
@@ -3840,7 +3877,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                 splitRestorePrompt.onDelete?.();
                 setSplitRestorePrompt(null);
               }} style={{ padding:'12px', border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.text, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                只刪除記錄
+                只刪除（分攤維持已還）
               </button>
               <button onClick={()=>setSplitRestorePrompt(null)}
                 style={{ padding:'11px', border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:'transparent', color:C.textMuted, fontSize:13, cursor:'pointer' }}>取消</button>
