@@ -1179,6 +1179,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [moreSection, setMoreSection] = useState(null); // null=更多首頁, 'todos','notes','members','invite'
   const [inviteVisible, setInviteVisible] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [splitRestorePrompt, setSplitRestorePrompt] = useState(null); // { item } 代墊已還記錄刪除後詢問是否還原
 
   useEffect(() => {
     loadAll();
@@ -2167,9 +2168,21 @@ function TripDetailScreen({ user, trip, onBack }) {
                               </div>
                               {/* 已還標記 */}
                               {r.settled ? (
-                                <button onClick={()=>setConfirmDel({title:'復原已還',message:`確定復原「${r.note||'代墊'}」的已還狀態？`,fn:()=>{
+                                <button onClick={()=>setConfirmDel({title:'復原已還',message:`確定復原「${r.note||'代墊'}」的已還狀態？\n個人記帳中相關的還款紀錄也會一併刪除。`,fn:()=>{
                                   const nr=splitRecords.map(sr=>(String(sr.id)===String(r.id))?{...sr,settled:false,settledAt:null}:sr);
                                   setSplitRecords(nr); saveSplitRecords(nr);
+                                  // 刪除個人帳務中對應的已還記錄
+                                  if (r.settledAt) {
+                                    const f1=personalWalletItems.filter(pw=>!(pw.note==='代墊已還'&&pw.amount===r.amount&&pw.currency===r.currency&&Math.abs((pw.createdAt||0)-r.settledAt)<5000));
+                                    if(f1.length<personalWalletItems.length){ setPersonalWalletItems(f1); savePersonalWallet(f1); }
+                                    const otherUidR=user.uid===r.payerId?r.receiverId:r.payerId;
+                                    getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUidR}`)).then(snap=>{
+                                      if(!snap.exists())return;
+                                      const its=snap.data().items||[];
+                                      const f2=its.filter(pw=>!(pw.note==='代墊已還'&&pw.amount===r.amount&&pw.currency===r.currency&&Math.abs((pw.createdAt||0)-r.settledAt)<5000));
+                                      if(f2.length<its.length) setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUidR}`),{items:JSON.parse(JSON.stringify(f2)),updatedAt:serverTimestamp()});
+                                    });
+                                  }
                                 }})} style={{ fontSize:10, color:C.green, fontWeight:700, padding:'3px 8px', borderRadius:6, backgroundColor:C.greenSoft, border:`1px solid ${C.green}33`, cursor:'pointer' }}>
                                   ✓ 已還 ↩
                                 </button>
@@ -2312,6 +2325,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.8)', color:CurrencyC[cur]||C.text, fontSize:11, fontWeight:800 }}>{cur}</span>
                           {item.date&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.6)', color:C.textMuted, fontSize:11 }}>{item.date}</span>}
                           {memberLabel&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.6)', color:C.textMuted, fontSize:11 }}>{memberLabel}</span>}
+                          {(item.note==='代墊已還'||item.note==='代墊結清')&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700 }}>🔗 分攤記錄</span>}
                         </div>
                         <div style={{ fontSize:15, fontWeight:700, marginBottom:2 }}>{item.name}</div>
                         {item.note&&<div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{item.note}</div>}
@@ -2320,19 +2334,32 @@ function TripDetailScreen({ user, trip, onBack }) {
                       <div style={{ textAlign:'right', flexShrink:0 }}>
                         <div style={{ fontSize:20, fontWeight:800, color:isIncome?(CurrencyC[cur]||C.green):C.purple }}>{isIncome?'+':'-'}{SYM[cur]||''}{Number(item.amount||0).toLocaleString()}</div>
                         <div style={{ display:'flex', gap:4, marginTop:6, justifyContent:'flex-end' }}>
-                          <button onClick={()=>{setWalletModal({open:true,data:{...item,contributorIds:item.contributorIds||allUids,forMemberIds:item.forMemberIds||allUids}});setWalletCalc(false);}} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
-                          <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？${item.note==='代墊結清'?'\n（相關代墊記錄將恢復為未結清）':''}`,fn:()=>{
-                            setActiveItems(p=>p.filter(i=>i.id!==item.id));
-                            // 代墊結清記錄：把對應的 splitRecords 還原為未結清
-                            if (item.note==='代墊結清' && item.createdAt) {
-                              const nr = splitRecords.map(sr =>
-                                Math.abs((sr.settledAt||0) - item.createdAt) < 5000
-                                  ? {...sr, settled:false, settledAt:null}
-                                  : sr
-                              );
-                              setSplitRecords(nr); saveSplitRecords(nr);
+                          {/* 代墊自動記錄不可編輯 */}
+                          {(item.note!=='代墊已還'&&item.note!=='代墊結清') && (
+                            <button onClick={()=>{setWalletModal({open:true,data:{...item,contributorIds:item.contributorIds||allUids,forMemberIds:item.forMemberIds||allUids}});setWalletCalc(false);}} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
+                          )}
+                          <button onClick={()=>{
+                            if(item.note==='代墊已還') {
+                              // 先刪除，再詢問是否還原分攤
+                              setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>{
+                                setActiveItems(p=>p.filter(i=>i.id!==item.id));
+                                setSplitRestorePrompt({item});
+                              }});
+                            } else {
+                              setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？${item.note==='代墊結清'?'\n（相關代墊記錄將恢復為未結清）':''}`,fn:()=>{
+                                setActiveItems(p=>p.filter(i=>i.id!==item.id));
+                                // 代墊結清記錄：把對應的 splitRecords 還原為未結清
+                                if (item.note==='代墊結清' && item.createdAt) {
+                                  const nr = splitRecords.map(sr =>
+                                    Math.abs((sr.settledAt||0) - item.createdAt) < 5000
+                                      ? {...sr, settled:false, settledAt:null}
+                                      : sr
+                                  );
+                                  setSplitRecords(nr); saveSplitRecords(nr);
+                                }
+                              }});
                             }
-                          }})} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
+                          }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                         </div>
                       </div>
                     </div>
@@ -3718,6 +3745,31 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
       {DatePickerModal()}
+      {/* 代墊已還刪除後詢問是否還原分攤 */}
+      {splitRestorePrompt && (
+        <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+          <div onClick={()=>setSplitRestorePrompt(null)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(45,42,36,0.5)' }} />
+          <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:320, textAlign:'center' }}>
+            <div style={{ fontSize:28, marginBottom:10 }}>🔗</div>
+            <div style={{ fontSize:15, fontWeight:700, marginBottom:6 }}>也要還原分攤記錄？</div>
+            <div style={{ fontSize:13, color:C.textMuted, marginBottom:20 }}>把「{splitRestorePrompt.item?.name?.replace(/（.*?）/,'') || '代墊'}」在代墊明細中還原為未還？</div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={()=>setSplitRestorePrompt(null)} style={{ flex:1, padding:'11px', border:`1px solid ${C.border}`, borderRadius:10, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:600, cursor:'pointer' }}>不用了</button>
+              <button onClick={()=>{
+                const it=splitRestorePrompt.item;
+                if(it?.createdAt){
+                  const nr=splitRecords.map(sr=>
+                    Math.abs((sr.settledAt||0)-it.createdAt)<5000
+                      ?{...sr,settled:false,settledAt:null}:sr
+                  );
+                  setSplitRecords(nr); saveSplitRecords(nr);
+                }
+                setSplitRestorePrompt(null);
+              }} style={{ flex:1, padding:'11px', border:'none', borderRadius:10, backgroundColor:C.green, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>還原分攤</button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmDialog isOpen={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { confirmDel?.fn(); setConfirmDel(null); }} title={confirmDel?.title} message={confirmDel?.message} />
     </div>
   );
