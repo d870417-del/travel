@@ -1268,6 +1268,163 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [copied, setCopied] = useState(false);
   const [splitRestorePrompt, setSplitRestorePrompt] = useState(null); // { item } 代墊已還記錄刪除後詢問是否還原
   const [settleCurrencyPrompt, setSettleCurrencyPrompt] = useState(null); // { amount, currency, twdAmount, onChoose }
+  const [uploadModal, setUploadModal] = useState({ open:false }); // 上傳行程表解析
+  const [downloading, setDownloading] = useState(null); // 'pdf'|'excel'|'overview'
+
+  // ─── 下載工具 ─────────────────────────────────────────────────
+  const memberName = uid => members.find(m=>m.uid===uid)?.displayName||uid||'?';
+
+  const loadXLSX = () => new Promise(res => {
+    if (window.XLSX) { res(window.XLSX); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => res(window.XLSX);
+    document.head.appendChild(s);
+  });
+
+  const openPrint = (html) => {
+    const w = window.open('','_blank');
+    w.document.write(html); w.document.close();
+    setTimeout(() => w.print(), 500);
+  };
+
+  const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🏨','其他':'📌'};
+
+  // ① 行程表 PDF
+  const downloadItineraryPDF = () => {
+    setDownloading('pdf');
+    const grouped = {};
+    [...itinerary].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(it=>{
+      const d = it.date||'待安排'; if(!grouped[d]) grouped[d]=[];
+      grouped[d].push(it);
+    });
+    const days = [...tripDates].filter(d=>grouped[d]);
+    if(grouped['待安排']) days.push('待安排');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${trip.name} 行程表</title><style>
+      body{font-family:-apple-system,sans-serif;margin:0;padding:24px;color:#2A2520;background:#fff}
+      h1{font-size:22px;font-weight:900;margin-bottom:4px}
+      .sub{color:#9C9080;font-size:13px;margin-bottom:28px}
+      .day{break-inside:avoid;margin-bottom:28px}
+      .day-title{font-size:16px;font-weight:800;color:#2A8FA5;border-bottom:2px solid #E0F3F8;padding-bottom:6px;margin-bottom:12px}
+      .item{display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #F0EDE8}
+      .time{font-size:12px;color:#9C9080;min-width:40px;padding-top:2px}
+      .cat{font-size:11px;padding:2px 7px;border-radius:5px;background:#E0F3F8;color:#2A8FA5;font-weight:700;white-space:nowrap}
+      .name{font-size:14px;font-weight:700;margin-bottom:3px}
+      .note{font-size:12px;color:#9C9080}
+      @media print{body{padding:12px}}
+    </style></head><body>
+    <h1>${trip.emoji||'✈️'} ${trip.name}</h1>
+    <div class="sub">${trip.destinations||''} ${trip.startDate&&trip.endDate?`· ${trip.startDate} ~ ${trip.endDate}`:''} · ${members.length} 人同行</div>
+    ${days.map(d=>`
+      <div class="day">
+        <div class="day-title">📅 ${d}</div>
+        ${(grouped[d]||[]).map(it=>`
+          <div class="item">
+            <div class="time">${it.time||''}</div>
+            <div>
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:3px">
+                <span class="cat">${catIcon[it.category]||'📌'} ${it.category||'其他'}</span>
+                <span class="name">${it.name}</span>
+              </div>
+              ${it.location?`<div class="note">📍 ${it.location}</div>`:''}
+              ${it.note?`<div class="note">${it.note}</div>`:''}
+            </div>
+          </div>`).join('')}
+      </div>`).join('')}
+    </body></html>`;
+    openPrint(html);
+    setDownloading(null);
+  };
+
+  // ② 帳務 Excel
+  const downloadWalletExcel = async () => {
+    setDownloading('excel');
+    const XLSX = await loadXLSX();
+    const wb = XLSX.utils.book_new();
+    // 共同公費
+    const shared = [['日期','項目','類型','金額','幣別','付款人','備註'],...walletItems.map(i=>[i.date||'',i.name||'',i.type||'',i.amount||0,i.currency||'TWD',memberName(i.editedById),i.note||''])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(shared), '共同公費');
+    // 個人記帳
+    const personal = [['日期','項目','類型','金額','幣別','備註'],...personalWalletItems.map(i=>[i.date||'',i.name||'',i.type||'',i.amount||0,i.currency||'TWD',i.note||''])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(personal), '個人記帳');
+    // 代墊記錄
+    const splits = [['項目','付款人','欠款人','金額','幣別','狀態'],...splitRecords.map(r=>[r.note||'',memberName(r.payerId),memberName(r.receiverId),r.amount||0,r.currency||'JPY',r.settled?'已還':'未還'])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(splits), '代墊記錄');
+    // 購物清單
+    const shops = [['店家','品項','金額','幣別','狀態','備註'],...shoppingItems.map(i=>[i.shopName||'',i.name||'',i.price||'',i.currency||'',i.checked?'已買':'未買',i.note||''])];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(shops), '購物清單');
+    XLSX.writeFile(wb, `${trip.name}_帳務.xlsx`);
+    setDownloading(null);
+  };
+
+  // ③ 旅程總覽 PDF
+  const downloadOverviewPDF = () => {
+    setDownloading('overview');
+    const SYM2 = {TWD:'NT$',JPY:'¥',KRW:'₩',USD:'$'};
+    // 費用統計
+    const expTotals = {};
+    walletItems.filter(i=>i.type==='支出').forEach(i=>{ expTotals[i.currency]=(expTotals[i.currency]||0)+Number(i.amount||0); });
+    const expStr = Object.entries(expTotals).map(([c,a])=>`${SYM2[c]||c}${a.toLocaleString()} ${c}`).join('　');
+    // 行程亮點（每天第一筆）
+    const highlights = {};
+    [...itinerary].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(it=>{ if(!highlights[it.date]) highlights[it.date]=it; });
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${trip.name} 旅程總覽</title><style>
+      body{font-family:-apple-system,sans-serif;margin:0;padding:0;color:#2A2520;background:#fff}
+      .hero{background:linear-gradient(135deg,#2A8FA5,#3DAD8A);color:#fff;padding:40px 28px 32px}
+      .hero h1{font-size:28px;font-weight:900;margin:12px 0 6px}
+      .hero .sub{font-size:14px;opacity:0.85}
+      .section{padding:22px 28px;border-bottom:1px solid #F0EDE8}
+      .section-title{font-size:13px;font-weight:800;color:#9C9080;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+      .stat-row{display:flex;gap:20px;flex-wrap:wrap}
+      .stat{background:#F4F0E6;border-radius:12px;padding:14px 18px;flex:1;min-width:120px}
+      .stat-val{font-size:22px;font-weight:900;color:#2A8FA5}
+      .stat-label{font-size:12px;color:#9C9080;margin-top:3px}
+      .member-chips{display:flex;gap:8px;flex-wrap:wrap}
+      .chip{padding:6px 14px;border-radius:20px;background:#E0F3F8;color:#2A8FA5;font-size:13px;font-weight:700}
+      .hl-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #F4F0E6}
+      .hl-date{font-size:12px;color:#9C9080;min-width:50px}
+      .hl-name{font-size:14px;font-weight:700}
+      .exp-box{background:#E6F5EF;border-radius:12px;padding:16px 20px;margin-top:8px}
+      .exp-val{font-size:20px;font-weight:900;color:#3DAD8A}
+      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+    <div class="hero">
+      <div style="font-size:48px">${trip.emoji||'✈️'}</div>
+      <h1>${trip.name}</h1>
+      <div class="sub">${[trip.destinations,trip.startDate&&trip.endDate?`${trip.startDate} ～ ${trip.endDate}`:''].filter(Boolean).join('　·　')}</div>
+    </div>
+    <div class="section">
+      <div class="section-title">行程概覽</div>
+      <div class="stat-row">
+        <div class="stat"><div class="stat-val">${tripDates.filter(d=>d!=='待安排').length}</div><div class="stat-label">旅遊天數</div></div>
+        <div class="stat"><div class="stat-val">${itinerary.length}</div><div class="stat-label">行程項目</div></div>
+        <div class="stat"><div class="stat-val">${members.length}</div><div class="stat-label">同行人數</div></div>
+        <div class="stat"><div class="stat-val">${walletItems.filter(i=>i.type==='支出').length}</div><div class="stat-label">消費筆數</div></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">成員</div>
+      <div class="member-chips">${members.map(m=>`<div class="chip">${m.displayName}</div>`).join('')}</div>
+    </div>
+    <div class="section">
+      <div class="section-title">每日亮點</div>
+      ${tripDates.filter(d=>d!=='待安排'&&highlights[d]).map(d=>`
+        <div class="hl-row">
+          <div class="hl-date">${d}</div>
+          <div>
+            <div class="hl-name">${catIcon[highlights[d].category]||'📌'} ${highlights[d].name}</div>
+            ${highlights[d].note?`<div style="font-size:12px;color:#9C9080;margin-top:2px">${highlights[d].note}</div>`:''}
+          </div>
+        </div>`).join('')}
+    </div>
+    ${expStr?`<div class="section">
+      <div class="section-title">費用總計（共同公費）</div>
+      <div class="exp-box"><div class="exp-val">${expStr}</div><div style="font-size:12px;color:#3DAD8A;margin-top:4px">${walletItems.filter(i=>i.type==='支出').length} 筆消費</div></div>
+    </div>`:''}
+    </body></html>`;
+    openPrint(html);
+    setDownloading(null);
+  };
 
   useEffect(() => {
     loadAll();
@@ -1615,7 +1772,10 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ position:'sticky', top:0, zIndex:30, backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:'10px 16px' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
           <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>選擇日期</span>
-          <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 日期</button>
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📋 解析行程表</button>
+            <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 日期</button>
+          </div>
         </div>
         <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
           {tripDates.map(d => (
@@ -2950,6 +3110,28 @@ function TripDetailScreen({ user, trip, onBack }) {
             </button>
           ))}
         </div>
+
+        {/* ─ 下載區 ─ */}
+        <div style={{ marginTop:20 }}>
+          <div style={{ fontSize:11, fontWeight:800, color:C.textMuted, textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>下載旅程資料</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {[
+              { key:'pdf',      emoji:'🗓', label:'行程表 PDF', desc:'每天行程一覽，可列印帶著走', fn: downloadItineraryPDF },
+              { key:'overview', emoji:'🗺', label:'旅程總覽 PDF', desc:'封面頁、成員、亮點、費用統計', fn: downloadOverviewPDF },
+              { key:'excel',    emoji:'📊', label:'帳務明細 Excel', desc:'公費、個人帳、代墊、購物四個工作表', fn: downloadWalletExcel },
+            ].map(({ key, emoji, label, desc, fn }) => (
+              <button key={key} onClick={fn} disabled={!!downloading}
+                style={{ ...gs.card, cursor:'pointer', textAlign:'left', padding:'14px 16px', border:`1.5px solid ${C.blue}22`, background:downloading===key?C.blueSoft:C.surface, display:'flex', alignItems:'center', gap:14, opacity:downloading&&downloading!==key?0.5:1 }}>
+                <div style={{ fontSize:28 }}>{downloading===key?'⏳':emoji}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:800, color:C.blue }}>{label}</div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{desc}</div>
+                </div>
+                <div style={{ fontSize:14, color:C.blue, fontWeight:700 }}>↓</div>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     );
   };
@@ -4008,6 +4190,165 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
         </div>
       )}
+      {/* ─── 上傳行程表解析 Modal ─── */}
+      {uploadModal.open && (() => {
+        const [uMode, setUMode] = React.useState('file');
+        const [uText, setUText] = React.useState('');
+        const [uFile, setUFile] = React.useState(null);
+        const [uFileData, setUFileData] = React.useState(null);
+        const [uFileType, setUFileType] = React.useState(null);
+        const [uLoading, setULoading] = React.useState(false);
+        const [uParsed, setUParsed] = React.useState(null);
+        const [uSelected, setUSelected] = React.useState([]);
+        const [uError, setUError] = React.useState('');
+
+        const handleFile = (e) => {
+          const f = e.target.files[0]; if(!f) return;
+          setUFile(f); setUError('');
+          const reader = new FileReader();
+          reader.onload = ev => {
+            setUFileData(ev.target.result.split(',')[1]);
+            setUFileType(f.type.startsWith('image/') ? 'image' : 'pdf');
+          };
+          reader.readAsDataURL(f);
+        };
+
+        const handleParse = async () => {
+          setULoading(true); setUError('');
+          try {
+            const systemPrompt = `你是行程解析助手。請分析行程內容並只回傳純 JSON（不要說明、不要 markdown 代碼塊），格式：{"items":[{"date":"YYYY-MM-DD或空字串","name":"地點或活動名稱","category":"景點|美食|購物|交通|住宿|其他","time":"HH:MM或空字串","note":"備註說明"}]}`;
+            let content;
+            if(uMode==='text') {
+              content = `請解析這個行程表：\n\n${uText}`;
+            } else if(uFileType==='image') {
+              content = [
+                { type:'image', source:{ type:'base64', media_type:uFile.type, data:uFileData } },
+                { type:'text', text:'請解析這張行程表圖片，萃取所有行程項目。' }
+              ];
+            } else {
+              content = [
+                { type:'document', source:{ type:'base64', media_type:'application/pdf', data:uFileData } },
+                { type:'text', text:'請解析這份行程表文件，萃取所有行程項目。' }
+              ];
+            }
+            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({
+                model:'claude-sonnet-4-6', max_tokens:2000,
+                system: systemPrompt,
+                messages:[{ role:'user', content }]
+              })
+            });
+            const data = await resp.json();
+            const raw = (data.content||[]).map(c=>c.text||'').join('');
+            const clean = raw.replace(/```json|```/g,'').trim();
+            const parsed = JSON.parse(clean);
+            const items = parsed.items||[];
+            setUParsed(items);
+            setUSelected(items.map((_,i)=>i));
+          } catch(e) {
+            setUError('解析失敗，請確認格式後重試');
+          }
+          setULoading(false);
+        };
+
+        const handleAdd = () => {
+          const now = Date.now();
+          const newItems = uSelected.map((idx,i) => {
+            const it = uParsed[idx];
+            return { id:now+i, name:it.name||'未命名', category:it.category||'景點', date:it.date||'待安排', time:it.time||'', note:it.note||'', createdAt:now+i, editedByName:user.displayName||user.email, editedById:user.uid };
+          });
+          const newIti = [...itinerary, ...newItems];
+          const newDates = [...new Set(newItems.map(it=>it.date).filter(d=>d&&d!=='待安排'))].sort();
+          const merged = [...new Set([...tripDates.filter(d=>d!=='待安排'), ...newDates, '待安排'])].sort();
+          const finalDates = [...merged.filter(d=>d!=='待安排'), '待安排'];
+          setItinerary(newIti); setTripDates(finalDates);
+          saveItinerary(newIti, finalDates);
+          setUploadModal({open:false});
+        };
+
+        const catColor = { '景點':C.green, '美食':C.warm, '購物':C.warm, '交通':C.purple, '住宿':C.blue, '其他':C.textMuted };
+
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+            <div onClick={()=>setUploadModal({open:false})} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+            <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'88vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+                <div style={{ fontSize:17, fontWeight:800 }}>📋 智慧解析行程表</div>
+                <button onClick={()=>setUploadModal({open:false})} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
+              </div>
+
+              {!uParsed ? (<>
+                <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                  {[['file','📎 上傳檔案'],['text','✏️ 貼上文字']].map(([m,label])=>(
+                    <button key={m} onClick={()=>setUMode(m)} style={{ flex:1, padding:'10px', borderRadius:10, border:`1.5px solid ${uMode===m?C.blue:C.border}`, backgroundColor:uMode===m?C.blueSoft:C.bg, color:uMode===m?C.blue:C.textMuted, fontWeight:700, fontSize:13, cursor:'pointer' }}>{label}</button>
+                  ))}
+                </div>
+                {uMode==='file' ? (
+                  <>
+                    <input type="file" accept="image/*,.pdf" onChange={handleFile} style={{ display:'none' }} id="iti-up"/>
+                    <label htmlFor="iti-up" style={{ display:'block', border:`2px dashed ${uFile?C.blue:C.border}`, borderRadius:16, padding:'36px 20px', textAlign:'center', cursor:'pointer', backgroundColor:uFile?C.blueSoft:'transparent' }}>
+                      {uFile ? (<>
+                        <div style={{ fontSize:36, marginBottom:8 }}>{uFileType==='image'?'🖼️':'📄'}</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.blue }}>{uFile.name}</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>點擊重新選擇</div>
+                      </>) : (<>
+                        <div style={{ fontSize:40, marginBottom:8 }}>📂</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>點擊上傳圖片或 PDF</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>截圖、拍照、PDF 都可以</div>
+                      </>)}
+                    </label>
+                  </>
+                ) : (
+                  <textarea style={{ ...gs.input, height:200, resize:'none', lineHeight:1.6 }}
+                    placeholder={'把行程文字貼在這裡，例如：\n6/20 10:00 淺草寺\n6/20 12:00 築地午餐\n6/21 成田機場回台灣'}
+                    value={uText} onChange={e=>setUText(e.target.value)}/>
+                )}
+                {uError && <div style={{ color:C.danger, fontSize:13, marginTop:10, textAlign:'center' }}>{uError}</div>}
+                <button onClick={handleParse} disabled={uLoading||(uMode==='file'?!uFileData:!uText.trim())}
+                  style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:700, cursor:'pointer', opacity:(uLoading||(uMode==='file'?!uFileData:!uText.trim()))?0.5:1 }}>
+                  {uLoading ? '⏳ AI 解析中...' : '✨ 開始解析'}
+                </button>
+              </>) : (<>
+                <div style={{ fontSize:13, color:C.textMuted, marginBottom:12 }}>
+                  解析到 <strong style={{ color:C.blue }}>{uParsed.length}</strong> 個項目，勾選要加入的：
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+                  {uParsed.map((item,i)=>{
+                    const sel=uSelected.includes(i);
+                    return (
+                      <div key={i} onClick={()=>setUSelected(s=>sel?s.filter(x=>x!==i):[...s,i])}
+                        style={{ padding:'10px 12px', borderRadius:12, border:`1.5px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blueSoft:C.bg, cursor:'pointer', display:'flex', gap:10, alignItems:'flex-start' }}>
+                        <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blue:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:2 }}>
+                          {sel&&<span style={{ color:'#fff', fontSize:12, fontWeight:900 }}>✓</span>}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                            <span style={{ fontSize:14, fontWeight:700 }}>{item.name}</span>
+                            <span style={{ fontSize:11, padding:'2px 7px', borderRadius:6, backgroundColor:(catColor[item.category]||C.textMuted)+'22', color:catColor[item.category]||C.textMuted, fontWeight:700 }}>{item.category||'其他'}</span>
+                          </div>
+                          {(item.date||item.time)&&<div style={{ fontSize:12, color:C.textMuted, marginTop:3 }}>
+                            {item.date&&<span>📅 {item.date}</span>}{item.date&&item.time&&' · '}{item.time&&<span>🕐 {item.time}</span>}
+                          </div>}
+                          {item.note&&<div style={{ fontSize:12, color:C.textMuted, marginTop:3, opacity:0.8 }}>{item.note}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display:'flex', gap:10 }}>
+                  <button onClick={()=>setUParsed(null)} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>↩ 重新解析</button>
+                  <button onClick={handleAdd} disabled={uSelected.length===0}
+                    style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer', opacity:uSelected.length===0?0.5:1 }}>
+                    加入行程（{uSelected.length} 項）
+                  </button>
+                </div>
+              </>)}
+            </div>
+          </div>
+        );
+      })()}
       <ConfirmDialog isOpen={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { confirmDel?.fn(); setConfirmDel(null); }} title={confirmDel?.title} message={confirmDel?.message} />
     </div>
   );
