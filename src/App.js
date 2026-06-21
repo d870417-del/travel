@@ -19,6 +19,7 @@ import {
   query,
   where,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -1185,6 +1186,37 @@ function TripDetailScreen({ user, trip, onBack }) {
   useEffect(() => {
     loadAll();
   }, [trip.id]);
+
+  // 即時監聽：有人改資料馬上反映，不用重新整理
+  useEffect(() => {
+    const unsubs = [];
+    const tid = trip.id;
+
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_wallet`), snap => {
+      if(snap.exists()) setWalletItems(snap.data().items||[]);
+    }));
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_personalWallet_${user.uid}`), snap => {
+      if(snap.exists()) setPersonalWalletItems(snap.data().items||[]);
+    }));
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_splitRecords`), snap => {
+      if(snap.exists()) setSplitRecords(snap.data().items||[]);
+    }));
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_food`), snap => {
+      if(snap.exists()) setFoodItems(snap.data().items||[]);
+    }));
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_shopping`), snap => {
+      if(snap.exists()) setShoppingItems(snap.data().items||[]);
+    }));
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_itinerary`), snap => {
+      if(snap.exists()){
+        const d=snap.data();
+        setItinerary(d.items||[]);
+        if(d.dates) setTripDates(d.dates);
+      }
+    }));
+
+    return () => unsubs.forEach(u=>u());
+  }, [trip.id, user.uid]);
 
   async function loadAll() {
     try {
@@ -2423,7 +2455,8 @@ function TripDetailScreen({ user, trip, onBack }) {
                               // 直接顯示自訂 prompt（不走 ConfirmDialog，避免 setTimeout 問題）
                               setSplitRestorePrompt({
                                 item,
-                                onDelete: () => { setActiveItems(p=>p.filter(i=>i.id!==item.id)); deleteCounterpart(); }
+                                onDeleteSelf: () => setActiveItems(p=>p.filter(i=>i.id!==item.id)),
+                                onDeleteBoth: () => { setActiveItems(p=>p.filter(i=>i.id!==item.id)); deleteCounterpart(); }
                               });
                             } else if(item.note==='代墊結清') {
                               setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？\n對方的對應記錄也會一起刪除。\n代墊記錄也將恢復為未結清。`,fn:()=>{
@@ -3860,10 +3893,10 @@ function TripDetailScreen({ user, trip, onBack }) {
             <div style={{ fontSize:28, marginBottom:10 }}>🗑</div>
             <div style={{ fontSize:15, fontWeight:700, marginBottom:6 }}>確定刪除這筆記錄？</div>
             <div style={{ fontSize:13, color:C.textMuted, marginBottom:6 }}>{splitRestorePrompt.item?.name}</div>
-            <div style={{ fontSize:12, color:C.textMuted, marginBottom:20 }}>⚠️ 自己和對方的個人帳務記錄都會刪除</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginBottom:20 }}>選擇如何處理對方的記錄</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               <button onClick={()=>{
-                splitRestorePrompt.onDelete?.();
+                splitRestorePrompt.onDeleteBoth?.();
                 const it=splitRestorePrompt.item;
                 if(it?.createdAt){
                   const nr=splitRecords.map(sr=>Math.abs((sr.settledAt||0)-it.createdAt)<5000?{...sr,settled:false,settledAt:null}:sr);
@@ -3874,10 +3907,10 @@ function TripDetailScreen({ user, trip, onBack }) {
                 刪除，並還原分攤為未還
               </button>
               <button onClick={()=>{
-                splitRestorePrompt.onDelete?.();
+                splitRestorePrompt.onDeleteSelf?.();
                 setSplitRestorePrompt(null);
               }} style={{ padding:'12px', border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:C.bg, color:C.text, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                只刪除（分攤維持已還）
+                只刪除我的記錄（對方不動）
               </button>
               <button onClick={()=>setSplitRestorePrompt(null)}
                 style={{ padding:'11px', border:`1px solid ${C.border}`, borderRadius:12, backgroundColor:'transparent', color:C.textMuted, fontSize:13, cursor:'pointer' }}>取消</button>
