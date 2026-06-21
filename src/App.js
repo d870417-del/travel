@@ -1283,9 +1283,12 @@ function TripDetailScreen({ user, trip, onBack }) {
   });
 
   const openPrint = (html) => {
-    const w = window.open('','_blank');
+    const w = window.open('', '_blank');
     w.document.write(html); w.document.close();
-    setTimeout(() => w.print(), 500);
+    setTimeout(() => {
+      w.onafterprint = () => w.close(); // 列印完或按取消，自動關閉
+      w.print();
+    }, 500);
   };
 
   const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🏨','其他':'📌'};
