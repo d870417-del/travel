@@ -1783,7 +1783,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     });
 
     // 代墊結算
-    const unsettled = (Array.isArray(splitRecords)?splitRecords:[]).filter(r=>!r.settled);
+    const unsettled = (Array.isArray(splitRecords)?splitRecords:[]).filter(r=>!r.settled && r.payerId!==r.receiverId);
     const simplify = (records) => {
       const transfers=[];
       const currencies=[...new Set(records.map(r=>r.currency||'TWD'))];
@@ -1957,13 +1957,24 @@ function TripDetailScreen({ user, trip, onBack }) {
                             });
                             setSplitRecords(newRecords); saveSplitRecords(newRecords);
                             setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
-                            // 自動在個人帳務新增結清記錄
+                            // 雙方個人帳務都寫入
                             const today=new Date(now);
                             const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
-                            const label = g.from===user.uid ? `還款・${g.items.find(x=>x.currency===t.currency)?.note||'代墊'}` : `收款・${g.items.find(x=>x.currency===t.currency)?.note||'代墊'}`;
-                            const type = g.from===user.uid ? '支出' : '存入';
-                            const newEntry = { id:now+999, name:label, amount:t.amount, currency:t.currency, type, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
-                            const np=[...personalWalletItems, newEntry]; setPersonalWalletItems(np); savePersonalWallet(np);
+                            const itemNote = g.items.find(x=>x.currency===t.currency)?.note||'代墊';
+                            // 我自己的帳務
+                            const myLabel = g.from===user.uid ? `還款・${itemNote}` : `收款・${itemNote}`;
+                            const myType = g.from===user.uid ? '支出' : '存入';
+                            const myEntry = { id:now+998, name:myLabel, amount:t.amount, currency:t.currency, type:myType, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                            const np=[...personalWalletItems, myEntry]; setPersonalWalletItems(np); savePersonalWallet(np);
+                            // 對方的帳務（用對方的 uid 存到對方的個人帳）
+                            const otherUid = g.from===user.uid ? g.to : g.from;
+                            const otherLabel = g.from===user.uid ? `收款・${itemNote}` : `還款・${itemNote}`;
+                            const otherType = g.from===user.uid ? '存入' : '支出';
+                            const otherEntry = { id:now+999, name:otherLabel, amount:t.amount, currency:t.currency, type:otherType, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                            getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`)).then(snap=>{
+                              const items=snap.exists()?snap.data().items||[]:[];
+                              setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`), { items:JSON.parse(JSON.stringify([...items,otherEntry])), updatedAt:serverTimestamp() });
+                            });
                           };
                           return (
                             <div key={ti} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', backgroundColor:'rgba(255,255,255,0.5)', borderRadius:10 }}>
@@ -1999,7 +2010,18 @@ function TripDetailScreen({ user, trip, onBack }) {
                             const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
                             const label = g.from===user.uid ? `還款・${t.note||'代墊'}` : `收款・${t.note||'代墊'}`;
                             const type = g.from===user.uid ? '支出' : '存入';
-                            newEntries.push({ id:now+newEntries.length+999, name:label, amount:t.amount, currency:t.currency, type, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now });
+                            const myLbl = g.from===user.uid?`還款・${t.note||'代墊'}`:`收款・${t.note||'代墊'}`;
+                            const myTyp = g.from===user.uid?'支出':'存入';
+                            newEntries.push({ id:now+newEntries.length+999, name:myLbl, amount:t.amount, currency:t.currency, type:myTyp, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now });
+                            // 對方帳務
+                            const othUid = g.from===user.uid?g.to:g.from;
+                            const othLbl = g.from===user.uid?`收款・${t.note||'代墊'}`:`還款・${t.note||'代墊'}`;
+                            const othTyp = g.from===user.uid?'存入':'支出';
+                            const othEntry = { id:now+newEntries.length+9990, name:othLbl, amount:t.amount, currency:t.currency, type:othTyp, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                            getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid}`)).then(snap=>{
+                              const its=snap.exists()?snap.data().items||[]:[];
+                              setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid}`),{items:JSON.parse(JSON.stringify([...its,othEntry])),updatedAt:serverTimestamp()});
+                            });
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
                           const np=[...personalWalletItems,...newEntries]; setPersonalWalletItems(np); savePersonalWallet(np);
@@ -2024,8 +2046,19 @@ function TripDetailScreen({ user, trip, onBack }) {
                           const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
                           const label = g.from===user.uid ? `還款・${t.note||'代墊'}` : `收款・${t.note||'代墊'}`;
                           const type = g.from===user.uid ? '支出' : '存入';
-                          const newEntry = { id:now+999, name:label, amount:t.amount, currency:t.currency, type, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
-                          const np=[...personalWalletItems,newEntry]; setPersonalWalletItems(np); savePersonalWallet(np);
+                          const myLbl2 = g.from===user.uid?`還款・${t.note||'代墊'}`:`收款・${t.note||'代墊'}`;
+                          const myTyp2 = g.from===user.uid?'支出':'存入';
+                          const myEntry2 = { id:now+998, name:myLbl2, amount:t.amount, currency:t.currency, type:myTyp2, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                          const np=[...personalWalletItems,myEntry2]; setPersonalWalletItems(np); savePersonalWallet(np);
+                          // 對方帳務
+                          const othUid2 = g.from===user.uid?g.to:g.from;
+                          const othLbl2 = g.from===user.uid?`收款・${t.note||'代墊'}`:`還款・${t.note||'代墊'}`;
+                          const othTyp2 = g.from===user.uid?'存入':'支出';
+                          const othEntry2 = { id:now+999, name:othLbl2, amount:t.amount, currency:t.currency, type:othTyp2, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                          getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`)).then(snap=>{
+                            const its=snap.exists()?snap.data().items||[]:[];
+                            setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`),{items:JSON.parse(JSON.stringify([...its,othEntry2])),updatedAt:serverTimestamp()});
+                          });
                         }})} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                           ✓ 標記結清
                         </button>
