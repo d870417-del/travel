@@ -1200,7 +1200,21 @@ function TripDetailScreen({ user, trip, onBack }) {
   }
   async function loadItinerary() {
     const s = await getDoc(doc(db,"tripData",`${trip.id}_itinerary`));
-    if (s.exists()) { const d=s.data(); setItinerary(d.items||[]); setTripDates(d.dates||['待安排']); }
+    if (s.exists()) {
+      const d=s.data();
+      setItinerary(d.items||[]);
+      const dates=d.dates||['待安排'];
+      setTripDates(dates);
+      // 自動選今天或最近的日期
+      const today=new Date();
+      const datesOnly=dates.filter(x=>x!=='待安排');
+      if (datesOnly.length>0) {
+        const toD=s=>{ const [m,dd]=s.split('/'); return new Date(today.getFullYear(),Number(m)-1,Number(dd)); };
+        let closest=datesOnly[0], minDiff=Math.abs(toD(datesOnly[0])-today);
+        datesOnly.forEach(x=>{ const diff=Math.abs(toD(x)-today); if(diff<minDiff){minDiff=diff;closest=x;} });
+        setSelectedDate(closest);
+      }
+    }
   }
   async function saveItinerary(items, dates) {
     await setDoc(doc(db,"tripData",`${trip.id}_itinerary`), { items:JSON.parse(JSON.stringify(items)), dates, updatedAt:serverTimestamp() });
@@ -1332,17 +1346,8 @@ function TripDetailScreen({ user, trip, onBack }) {
 
   // ── helpers ──
   // 自動選最近日期邏輯
-  const effectiveDate = (() => {
-    if (tripDates.includes(selectedDate)) return selectedDate;
-    const today = new Date();
-    const datesOnly = tripDates.filter(d=>d!=='待安排');
-    if (!datesOnly.length) return selectedDate;
-    const toDate = s => { const [m,d]=s.split('/'); return new Date(today.getFullYear(),Number(m)-1,Number(d)); };
-    let closest = datesOnly[0];
-    let minDiff = Math.abs(toDate(datesOnly[0])-today);
-    datesOnly.forEach(d=>{ const diff=Math.abs(toDate(d)-today); if(diff<minDiff){minDiff=diff;closest=d;} });
-    return closest;
-  })();
+  // effectiveDate = 選中的日期（loadItinerary 時已自動設成最近的）
+  const effectiveDate = tripDates.includes(selectedDate) ? selectedDate : (tripDates.filter(d=>d!=='待安排')[0] || selectedDate);
 
   const filteredItinerary = itinerary
     .filter(i=>i.date===effectiveDate)
@@ -1944,13 +1949,21 @@ function TripDetailScreen({ user, trip, onBack }) {
                         {g.items.map((t, ti) => {
                           const sk = t.from+t.to+t.currency;
                           const settleOne = () => {
+                            const now = Date.now();
                             const newRecords = splitRecords.map(sr => {
                               const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
                                                (sr.payerId===t.from&&sr.receiverId===t.to);
-                              return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:Date.now()} : sr;
+                              return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:now} : sr;
                             });
                             setSplitRecords(newRecords); saveSplitRecords(newRecords);
                             setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
+                            // 自動在個人帳務新增結清記錄
+                            const today=new Date(now);
+                            const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
+                            const label = g.from===user.uid ? `還款・${g.items.find(x=>x.currency===t.currency)?.note||'代墊'}` : `收款・${g.items.find(x=>x.currency===t.currency)?.note||'代墊'}`;
+                            const type = g.from===user.uid ? '支出' : '存入';
+                            const newEntry = { id:now+999, name:label, amount:t.amount, currency:t.currency, type, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                            const np=[...personalWalletItems, newEntry]; setPersonalWalletItems(np); savePersonalWallet(np);
                           };
                           return (
                             <div key={ti} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', backgroundColor:'rgba(255,255,255,0.5)', borderRadius:10 }}>
@@ -1971,32 +1984,48 @@ function TripDetailScreen({ user, trip, onBack }) {
                       {/* 全部結清按鈕（只有多個幣別才顯示）*/}
                       {g.items.length > 1 && (
                         <button onClick={() => {
+                          const now = Date.now();
                           let newRecords = [...splitRecords];
+                          const newEntries = [];
                           g.items.forEach(t => {
                             const sk = t.from+t.to+t.currency;
                             newRecords = newRecords.map(sr => {
                               const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
                                                (sr.payerId===t.from&&sr.receiverId===t.to);
-                              return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:Date.now()} : sr;
+                              return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:now} : sr;
                             });
-                            setTransferStates(p=>{ const np={...p}; delete np[t.from+t.to+t.currency]; return np; });
+                            setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
+                            const today=new Date(now);
+                            const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
+                            const label = g.from===user.uid ? `還款・${t.note||'代墊'}` : `收款・${t.note||'代墊'}`;
+                            const type = g.from===user.uid ? '支出' : '存入';
+                            newEntries.push({ id:now+newEntries.length+999, name:label, amount:t.amount, currency:t.currency, type, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now });
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
+                          const np=[...personalWalletItems,...newEntries]; setPersonalWalletItems(np); savePersonalWallet(np);
                         }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                           ✓ 全部結清
                         </button>
                       )}
                       {g.items.length === 1 && (
                         <button onClick={() => {
+                          const now = Date.now();
                           const t = g.items[0];
                           const sk = t.from+t.to+t.currency;
                           const newRecords = splitRecords.map(sr => {
                             const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
                                              (sr.payerId===t.from&&sr.receiverId===t.to);
-                            return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:Date.now()} : sr;
+                            return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:now} : sr;
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
                           setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
+                          // 寫入個人帳務
+                          const today=new Date(now);
+                          const mmdd=`${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
+                          const label = g.from===user.uid ? `還款・${t.note||'代墊'}` : `收款・${t.note||'代墊'}`;
+                          const type = g.from===user.uid ? '支出' : '存入';
+                          const newEntry = { id:now+999, name:label, amount:t.amount, currency:t.currency, type, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                          const np=[...personalWalletItems,newEntry]; setPersonalWalletItems(np); savePersonalWallet(np);
                         }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                           ✓ 標記結清
                         </button>
@@ -2116,6 +2145,8 @@ function TripDetailScreen({ user, trip, onBack }) {
               })()}
             </div>
           )}
+        </div>
+
         {/* 新增代墊按鈕 */}
         <button onClick={() => setSplitModal({open:true, data:{payerId:user.uid, receiverIds:[], amount:'', currency:(tripCurrencies||['JPY'])[0]||'JPY', note:''}})}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${C.green}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
