@@ -1876,7 +1876,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
 
         <div style={{ padding:16, flex:1 }}>
-          {/* ── 上方：簡化後誰欠誰 ── */}
+          {/* ── 誰欠誰（依方向合併，同 A→B 放一起）── */}
           {transfers.length===0 ? (
             <div style={{ textAlign:'center', padding:'40px 20px' }}>
               <div style={{ fontSize:40, marginBottom:10 }}>🎉</div>
@@ -1884,64 +1884,102 @@ function TripDetailScreen({ user, trip, onBack }) {
               <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>目前沒有未結清的代墊款項</div>
             </div>
           ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
-              {transfers.map((t,idx)=>{
-                const fromM=members.find(m=>m.uid===t.from)||{displayName:'?'};
-                const toM=members.find(m=>m.uid===t.to)||{displayName:'?'};
-                const iAmFrom=t.from===user.uid; const iAmTo=t.to===user.uid;
-                const sk=t.from+t.to+t.currency;
-                const s=transferStates[sk]||{paidConfirmed:false,receivedConfirmed:false};
-                const done=s.paidConfirmed&&s.receivedConfirmed;
-                const settle=()=>{
-                  const n=splitRecords.filter(r=>!(
-                    ((r.payerId===t.to&&r.receiverId===t.from)||(r.payerId===t.from&&r.receiverId===t.to))&&r.currency===t.currency
-                  ));
-                  setSplitRecords(n); saveSplitRecords(n);
-                  setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
-                };
-                return (
-                  <div key={idx} style={{ ...gs.card, padding:'14px 16px', opacity:done?0.5:1, backgroundColor:iAmTo?C.greenSoft:iAmFrom?C.dangerSoft:C.surface }}>
-                    {/* 誰欠誰 */}
-                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:14, fontWeight:800, marginBottom:4 }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:24 }}>
+              {(() => {
+                // 把同一個 from→to 的不同幣別合在一起
+                const groups = {};
+                transfers.forEach(t => {
+                  const key = `${t.from}_${t.to}`;
+                  if (!groups[key]) groups[key] = { from:t.from, to:t.to, items:[] };
+                  groups[key].items.push(t);
+                });
+                return Object.values(groups).map((g, gi) => {
+                  const fromM = members.find(m=>m.uid===g.from)||{displayName:'?'};
+                  const toM = members.find(m=>m.uid===g.to)||{displayName:'?'};
+                  const iAmFrom = g.from===user.uid;
+                  const iAmTo = g.to===user.uid;
+                  return (
+                    <div key={gi} style={{ ...gs.card, padding:'16px', backgroundColor:iAmTo?C.greenSoft:iAmFrom?C.dangerSoft:C.surface }}>
+                      {/* 誰欠誰 */}
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                        <div style={{ fontSize:15, fontWeight:800 }}>
                           <span style={{ color:iAmFrom?C.danger:C.text }}>{iAmFrom?'我':fromM.displayName}</span>
-                          <span style={{ color:C.textMuted, margin:'0 6px' }}>→</span>
+                          <span style={{ color:C.textMuted, margin:'0 8px' }}>→</span>
                           <span style={{ color:iAmTo?C.green:C.text }}>{iAmTo?'我':toM.displayName}</span>
                         </div>
-                        <div style={{ fontSize:18, fontWeight:800, color:iAmTo?C.green:iAmFrom?C.danger:C.text }}>
-                          {SYM[t.currency]||''}{t.amount.toLocaleString()} {t.currency}
-                          <span style={{ fontSize:11, color:C.textMuted, fontWeight:400, marginLeft:6 }}>≈ NT${toTWD(t.amount,t.currency).toLocaleString()}</span>
-                        </div>
+                        {(iAmFrom||iAmTo) && (
+                          <div style={{ marginLeft:'auto', fontSize:11, fontWeight:700, color:iAmTo?C.green:C.danger, padding:'3px 8px', borderRadius:6, border:`1px solid ${iAmTo?C.green:C.danger}33` }}>
+                            {iAmTo?'待收款':'待還款'}
+                          </div>
+                        )}
                       </div>
-                      {(iAmFrom||iAmTo)&&!done&&(
-                        <div style={{ fontSize:11, fontWeight:700, color:iAmTo?C.green:C.danger, padding:'4px 8px', borderRadius:8, border:`1px solid ${iAmTo?C.green:C.danger}33`, flexShrink:0 }}>
-                          {iAmTo?'待收款':'待還款'}
-                        </div>
+
+                      {/* 各幣別 */}
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        {g.items.map((t, ti) => {
+                          const sk = t.from+t.to+t.currency;
+                          const settleOne = () => {
+                            const newRecords = splitRecords.map(sr => {
+                              const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
+                                               (sr.payerId===t.from&&sr.receiverId===t.to);
+                              return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:Date.now()} : sr;
+                            });
+                            setSplitRecords(newRecords); saveSplitRecords(newRecords);
+                            setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
+                          };
+                          return (
+                            <div key={ti} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', backgroundColor:'rgba(255,255,255,0.5)', borderRadius:10 }}>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:16, fontWeight:800, color:iAmTo?C.green:iAmFrom?C.danger:C.text }}>
+                                  {SYM[t.currency]||''}{t.amount.toLocaleString()} {t.currency}
+                                </div>
+                                <div style={{ fontSize:10, color:C.textMuted }}>≈ NT${toTWD(t.amount,t.currency).toLocaleString()}</div>
+                              </div>
+                              <button onClick={settleOne} style={{ padding:'7px 14px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+                                結清
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* 全部結清按鈕（只有多個幣別才顯示）*/}
+                      {g.items.length > 1 && (
+                        <button onClick={() => {
+                          let newRecords = [...splitRecords];
+                          g.items.forEach(t => {
+                            const sk = t.from+t.to+t.currency;
+                            newRecords = newRecords.map(sr => {
+                              const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
+                                               (sr.payerId===t.from&&sr.receiverId===t.to);
+                              return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:Date.now()} : sr;
+                            });
+                            setTransferStates(p=>{ const np={...p}; delete np[t.from+t.to+t.currency]; return np; });
+                          });
+                          setSplitRecords(newRecords); saveSplitRecords(newRecords);
+                        }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                          ✓ 全部結清
+                        </button>
                       )}
-                    </div>
-                    {/* 確認按鈕 */}
-                    {!done ? (
-                      <>
-                        <button onClick={()=>{
-                          // 任何人都可以按結清，把相關的 splitRecords 全標 settled
+                      {g.items.length === 1 && (
+                        <button onClick={() => {
+                          const t = g.items[0];
+                          const sk = t.from+t.to+t.currency;
                           const newRecords = splitRecords.map(sr => {
                             const isRelated = (sr.payerId===t.to&&sr.receiverId===t.from) ||
-                                              (sr.payerId===t.from&&sr.receiverId===t.to);
+                                             (sr.payerId===t.from&&sr.receiverId===t.to);
                             return isRelated && sr.currency===t.currency ? {...sr,settled:true,settledAt:Date.now()} : sr;
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
                           setTransferStates(p=>{ const np={...p}; delete np[sk]; return np; });
-                        }} style={{ width:'100%', padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                        }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                           ✓ 標記結清
                         </button>
-                      </>
-                    ) : (
-                      <div style={{ textAlign:'center', fontSize:12, color:C.green, fontWeight:700 }}>✓ 已結清</div>
-                    )}
-                  </div>
-                );
-              })}
+                      )}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           )}
 
