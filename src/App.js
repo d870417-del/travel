@@ -1973,7 +1973,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                                 </div>
                                 <div style={{ fontSize:10, color:C.textMuted }}>≈ NT${toTWD(t.amount,t.currency).toLocaleString()}</div>
                               </div>
-                              <button onClick={settleOne} style={{ padding:'7px 14px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+                              <button onClick={()=>setConfirmDel({title:'確認結清',message:`確定結清 ${SYM[t.currency]||''}${t.amount.toLocaleString()} ${t.currency}？結清後會自動記入個人帳務。`,fn:settleOne})} style={{ padding:'7px 14px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
                                 結清
                               </button>
                             </div>
@@ -1983,7 +1983,7 @@ function TripDetailScreen({ user, trip, onBack }) {
 
                       {/* 全部結清按鈕（只有多個幣別才顯示）*/}
                       {g.items.length > 1 && (
-                        <button onClick={() => {
+                        <button onClick={() => setConfirmDel({title:'確認結清',message:`確定一次結清所有幣別？結清後會自動記入個人帳務。`,fn:()=>{
                           const now = Date.now();
                           let newRecords = [...splitRecords];
                           const newEntries = [];
@@ -2003,12 +2003,12 @@ function TripDetailScreen({ user, trip, onBack }) {
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
                           const np=[...personalWalletItems,...newEntries]; setPersonalWalletItems(np); savePersonalWallet(np);
-                        }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                        }})} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                           ✓ 全部結清
                         </button>
                       )}
                       {g.items.length === 1 && (
-                        <button onClick={() => {
+                        <button onClick={() => setConfirmDel({title:'確認結清',message:`確定結清？結清後會自動記入個人帳務。`,fn:()=>{
                           const now = Date.now();
                           const t = g.items[0];
                           const sk = t.from+t.to+t.currency;
@@ -2026,7 +2026,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           const type = g.from===user.uid ? '支出' : '存入';
                           const newEntry = { id:now+999, name:label, amount:t.amount, currency:t.currency, type, date:mmdd, note:'代墊結清', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
                           const np=[...personalWalletItems,newEntry]; setPersonalWalletItems(np); savePersonalWallet(np);
-                        }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                        }})} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                           ✓ 標記結清
                         </button>
                       )}
@@ -2123,7 +2123,12 @@ function TripDetailScreen({ user, trip, onBack }) {
                               </div>
                               {/* 已還標記 */}
                               {r.settled ? (
-                                <div style={{ fontSize:10, color:C.green, fontWeight:700, padding:'2px 6px', borderRadius:6, backgroundColor:C.greenSoft }}>已還</div>
+                                <button onClick={()=>setConfirmDel({title:'復原已還',message:`確定復原「${r.note||'代墊'}」的已還狀態？`,fn:()=>{
+                                  const nr=splitRecords.map(sr=>(String(sr.id)===String(r.id))?{...sr,settled:false,settledAt:null}:sr);
+                                  setSplitRecords(nr); saveSplitRecords(nr);
+                                }})} style={{ fontSize:10, color:C.green, fontWeight:700, padding:'3px 8px', borderRadius:6, backgroundColor:C.greenSoft, border:`1px solid ${C.green}33`, cursor:'pointer' }}>
+                                  ✓ 已還 ↩
+                                </button>
                               ) : !isSelf ? (
                                 /* 付款人或欠款人都可以按已還 */
                                 <button onClick={() => {
@@ -2255,9 +2260,17 @@ function TripDetailScreen({ user, trip, onBack }) {
                         <div style={{ fontSize:20, fontWeight:800, color:isIncome?(CurrencyC[cur]||C.green):C.purple }}>{isIncome?'+':'-'}{SYM[cur]||''}{Number(item.amount||0).toLocaleString()}</div>
                         <div style={{ display:'flex', gap:4, marginTop:6, justifyContent:'flex-end' }}>
                           <button onClick={()=>{setWalletModal({open:true,data:{...item,contributorIds:item.contributorIds||allUids,forMemberIds:item.forMemberIds||allUids}});setWalletCalc(false);}} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
-                          <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>{
+                          <button onClick={()=>setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？${item.note==='代墊結清'?'\n（相關代墊記錄將恢復為未結清）':''}`,fn:()=>{
                             setActiveItems(p=>p.filter(i=>i.id!==item.id));
-
+                            // 代墊結清記錄：把對應的 splitRecords 還原為未結清
+                            if (item.note==='代墊結清' && item.createdAt) {
+                              const nr = splitRecords.map(sr =>
+                                Math.abs((sr.settledAt||0) - item.createdAt) < 5000
+                                  ? {...sr, settled:false, settledAt:null}
+                                  : sr
+                              );
+                              setSplitRecords(nr); saveSplitRecords(nr);
+                            }
                           }})} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                         </div>
                       </div>
