@@ -40,6 +40,9 @@ const C = {
   dangerSoft: "#FDECEA",
   success: "#3DAD8A",
   successSoft: "#E6F5EF",
+  warm: "#C07850",       // 暖土棕（美食、購物）
+  warmSoft: "#F7EAE0",   // 淡土棕背景
+  warmBorder: "#E8C4A0", // 土棕邊框
 };
 
 const TRIP_COLORS = ["#2A8FA5","#3DAD8A","#D4873A","#4E82A0","#8BA888","#C47A5A","#5BAECF","#7A9E6B"];
@@ -477,7 +480,7 @@ function TripListScreen({ user, onEnterTrip }) {
                         const diff = Math.ceil((start - today) / 86400000);
                         let badge, badgeColor, badgeBg;
                         if (diff > 0) { badge=`還有 ${diff} 天`; badgeColor=color; badgeBg=color+'18'; }
-                        else if (diff === 0) { badge='今天出發！🎉'; badgeColor='#D97706'; badgeBg='#FEF3E8'; }
+                        else if (diff === 0) { badge='今天出發！🎉'; badgeColor=C.warm; badgeBg=C.warmSoft; }
                         else if (today <= end) { badge='旅遊中 ✈️'; badgeColor=C.green; badgeBg=C.greenSoft; }
                         else { badge='已結束'; badgeColor=C.textMuted; badgeBg=C.bg; }
                         return (
@@ -1168,8 +1171,8 @@ function ConfirmDialog({ isOpen, onClose, onConfirm, title, message }) {
 const getCategoryStyle = (cat) => {
   const map = {
     '景點': { bg: '#E8F7F2', color: C.green, border: '#B8E8D8' },
-    '美食': { bg: '#FEF3E8', color: '#D97706', border: '#FDDCB0' },
-    '購物': { bg: '#FDE8F3', color: '#BE185D', border: '#F9B8DA' },
+    '美食': { bg: C.warmSoft, color: C.warm, border: C.warmBorder },
+    '購物': { bg: C.warmSoft, color: C.warm, border: C.warmBorder },
     '交通': { bg: C.purpleSoft, color: C.purple, border: '#D4C4FF' },
     '住宿': { bg: C.blueSoft, color: C.blue, border: '#B8D0F8' },
     '其他': { bg: '#F0EDE8', color: C.textMuted, border: C.border },
@@ -1511,7 +1514,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   function copyCode() { navigator.clipboard.writeText(trip.inviteCode); setCopied(true); setTimeout(()=>setCopied(false),2000); }
 
   const getCat=(cat)=>{
-    const map={'景點':{bg:'#E8F7F2',color:C.green,border:'#B8E8D8'},'美食':{bg:'#FEF3E8',color:'#D97706',border:'#FDDCB0'},'購物':{bg:'#FDE8F3',color:'#BE185D',border:'#F9B8DA'},'交通':{bg:C.purpleSoft,color:C.purple,border:'#D4C4FF'},'住宿':{bg:C.blueSoft,color:C.blue,border:'#B8D0F8'},'其他':{bg:'#F0EDE8',color:C.textMuted,border:C.border}};
+    const map={'景點':{bg:C.greenSoft,color:C.green,border:'#B8E8D8'},'美食':{bg:C.warmSoft,color:C.warm,border:C.warmBorder},'購物':{bg:C.warmSoft,color:C.warm,border:C.warmBorder},'交通':{bg:C.purpleSoft,color:C.purple,border:'#C0D8E8'},'住宿':{bg:C.blueSoft,color:C.blue,border:'#B8D8E8'},'其他':{bg:'#F0EDE8',color:C.textMuted,border:C.border}};
     return map[cat]||map['其他'];
   };
 
@@ -1627,14 +1630,14 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ padding:16, flex:1 }}>
         {/* 當天連結的美食 */}
         {selectedDate!=='待安排' && foodItems.filter(f=>f.linkedDate===selectedDate).length>0 && (
-          <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:'#FEF3E8', borderRadius:14, border:'1px solid #FDDCB0' }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#D97706', marginBottom:8 }}>🍜 今天的美食</div>
+          <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
+            <div style={{ fontSize:11, fontWeight:700, color:C.warm, marginBottom:8 }}>🍜 今天的美食</div>
             <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
               {foodItems.filter(f=>f.linkedDate===selectedDate).map(f=>(
                 <button key={f.id} onClick={() => setTab('food')}
-                  style={{ flexShrink:0, padding:'8px 12px', backgroundColor:'#fff', borderRadius:10, border:'1px solid #FDDCB0', cursor:'pointer', textAlign:'left' }}>
+                  style={{ flexShrink:0, padding:'8px 12px', backgroundColor:'#fff', borderRadius:10, border:`1px solid ${C.warmBorder}`, cursor:'pointer', textAlign:'left' }}>
                   <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{f.name}</div>
-                  {(f.districts||[f.district]).filter(Boolean).map(d=><div key={d} style={{ fontSize:10, color:'#D97706' }}>📍 {d}</div>)}
+                  {(f.districts||[f.district]).filter(Boolean).map(d=><div key={d} style={{ fontSize:10, color:C.warm }}>📍 {d}</div>)}
                   {f.foodType && <div style={{ fontSize:10, color:C.textMuted }}>{f.foodType}</div>}
                 </button>
               ))}
@@ -1728,12 +1731,12 @@ function TripDetailScreen({ user, trip, onBack }) {
           {cities.length > 1 && (
             <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:6, marginBottom:4 }}>
               <button onClick={() => { setFoodSelectedCity('全部城市'); setFoodSelectedDistricts([]); }}
-                style={{ flexShrink:0, padding:'5px 12px', borderRadius:10, border:`1.5px solid ${foodSelectedCity==='全部城市'?'#D97706':C.border}`, backgroundColor:foodSelectedCity==='全部城市'?'#FEF3E8':C.bg, color:foodSelectedCity==='全部城市'?'#D97706':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                style={{ flexShrink:0, padding:'5px 12px', borderRadius:10, border:`1.5px solid ${foodSelectedCity==='全部城市'?C.warm:C.border}`, backgroundColor:foodSelectedCity==='全部城市'?C.warmSoft:C.bg, color:foodSelectedCity==='全部城市'?C.warm:C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
                 全部城市
               </button>
               {cities.map(city => (
                 <button key={city} onClick={() => { setFoodSelectedCity(city); setFoodSelectedDistricts([]); }}
-                  style={{ flexShrink:0, padding:'5px 12px', borderRadius:10, border:`1.5px solid ${foodSelectedCity===city?'#D97706':C.border}`, backgroundColor:foodSelectedCity===city?'#D97706':C.bg, color:foodSelectedCity===city?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  style={{ flexShrink:0, padding:'5px 12px', borderRadius:10, border:`1.5px solid ${foodSelectedCity===city?C.warm:C.border}`, backgroundColor:foodSelectedCity===city?C.warm:C.bg, color:foodSelectedCity===city?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>
                   {city}
                 </button>
               ))}
@@ -1779,10 +1782,10 @@ function TripDetailScreen({ user, trip, onBack }) {
                   <div key={item.id} style={{ ...gs.card, padding:'14px 16px' }}>
                     <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:8 }}>
                       <div style={{ display:'flex', gap:6, flexWrap:'wrap', flex:1 }}>
-                        {item.city && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#D97706', color:'#fff', fontSize:11, fontWeight:700 }}>{item.city}</span>}
+                        {item.city && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.warm, color:'#fff', fontSize:11, fontWeight:700 }}>{item.city}</span>}
                         {itemDistricts.map(d => <span key={d} style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.blueSoft, color:C.blue, fontSize:11, fontWeight:700 }}>📍 {d}</span>)}
                         {item.foodType && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.greenSoft, color:C.green, border:`1px solid ${C.green}33`, fontSize:11, fontWeight:700 }}>{item.foodType}</span>}
-                        {item.visited && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700 }}>✓ 已去</span>}
+                        {item.visited && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700 }}>✓ 已去</span>}
                       </div>
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                         <button onClick={() => setFoodModal({open:true,data:{...item}})} style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
@@ -1792,19 +1795,19 @@ function TripDetailScreen({ user, trip, onBack }) {
                     <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{item.name}</div>
                     {item.linkedDate && <div style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 8px', borderRadius:6, backgroundColor:color+'18', marginBottom:4 }}><span style={{ fontSize:11, color, fontWeight:700 }}>🗓 {item.linkedDate}</span></div>}
                     {item.price && <div style={{ fontSize:12, color:C.textMuted, marginBottom:4 }}>💴 {item.price}</div>}
-                    {item.note && <div style={{ fontSize:12, color:'#5A5247', backgroundColor:'#FEF3E8', borderLeft:'3px solid #D97706', padding:'8px 10px', borderRadius:'0 8px 8px 0', marginBottom:8, whiteSpace:'pre-wrap' }}>{item.note}</div>}
+                    {item.note && <div style={{ fontSize:12, color:'#5A5247', backgroundColor:C.warmSoft, borderLeft:`3px solid ${C.warm}`, padding:'8px 10px', borderRadius:'0 8px 8px 0', marginBottom:8, whiteSpace:'pre-wrap' }}>{item.note}</div>}
                     {item.photos?.length>0 && <div style={{ display:'flex', gap:6, overflowX:'auto', marginBottom:8 }}>{item.photos.map((p,i) => <img key={i} src={p} style={{ width:56, height:56, objectFit:'cover', borderRadius:8, flexShrink:0, border:`1px solid ${C.border}` }} alt="food" />)}</div>}
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:6 }}>
                       <div style={{ fontSize:10, color:C.textMuted }}>{item.editedByName||'成員'} 新增</div>
                       <div style={{ display:'flex', gap:8 }}>
                         <button onClick={() => { const n=foodItems.map(i=>i.id===item.id?{...i,visited:!i.visited}:i); setFoodItems(n);saveFood(n); }}
-                          style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${item.visited?'#D97706':C.border}`, backgroundColor:item.visited?'#FEF3E8':C.bg, color:item.visited?'#D97706':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                          style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${item.visited?C.warm:C.border}`, backgroundColor:item.visited?C.warmSoft:C.bg, color:item.visited?C.warm:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer' }}>
                           {item.visited?'✓ 已去':'標記已去'}
                         </button>
                         {(item.branches||[]).filter(b=>b.mapUrl).map((b,bi)=>(
-                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:'1px solid #FDDCB0', backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name||'地圖'}</button>
+                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name||'地圖'}</button>
                       ))}
-                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:'1px solid #FDDCB0', backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 地圖</button>}
+                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 地圖</button>}
                       </div>
                     </div>
                   </div>
@@ -1825,7 +1828,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             visited: false,
           }});
         }}
-          style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#D97706,#F59E0B)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(217,119,6,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+          style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.warm},${C.warm})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(217,119,6,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
       </div>
     );
   };
@@ -2353,7 +2356,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                                       if(f2.length<its.length) setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUidR}`),{items:JSON.parse(JSON.stringify(f2)),updatedAt:serverTimestamp()});
                                     });
                                   }
-                                }})} style={{ fontSize:10, color:'#D97706', fontWeight:700, padding:'3px 8px', borderRadius:6, backgroundColor:'#FEF3E8', border:`1px solid #FDDCB0`, cursor:'pointer' }}>
+                                }})} style={{ fontSize:10, color:C.warm, fontWeight:700, padding:'3px 8px', borderRadius:6, backgroundColor:C.warmSoft, border:`1px solid C.warmBorder`, cursor:'pointer' }}>
                                   ↩ 撤銷
                                 </button>
                               ) : !isSelf ? (
@@ -2502,7 +2505,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.8)', color:CurrencyC[cur]||C.text, fontSize:11, fontWeight:800 }}>{cur}</span>
                           {item.date&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.6)', color:C.textMuted, fontSize:11 }}>{item.date}</span>}
                           {memberLabel&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.6)', color:C.textMuted, fontSize:11 }}>{memberLabel}</span>}
-                          {(item.note==='代墊已還'||item.note==='代墊結清')&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#FEF3E8', color:'#D97706', fontSize:11, fontWeight:700 }}>🔗 分攤記錄</span>}
+                          {(item.note==='代墊已還'||item.note==='代墊結清')&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700 }}>🔗 分攤記錄</span>}
                         </div>
                         <div style={{ fontSize:15, fontWeight:700, marginBottom:2 }}>{item.name}</div>
                         {item.origInfo&&<div style={{ fontSize:11, color:C.textMuted, marginTop:1 }}>💱 {item.origInfo}</div>}
@@ -2639,7 +2642,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:'10px 16px' }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
           <select value={shopFilterMember} onChange={e=>setShopFilterMember(e.target.value)}
-            style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px solid ${shopFilterMember!=='all'?'#BE185D':C.border}`, backgroundColor:shopFilterMember!=='all'?'#FDE8F3':C.bg, color:shopFilterMember!=='all'?'#BE185D':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer', outline:'none' }}>
+            style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px solid ${shopFilterMember!=='all'?C.warm:C.border}`, backgroundColor:shopFilterMember!=='all'?C.warmSoft:C.bg, color:shopFilterMember!=='all'?C.warm:C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer', outline:'none' }}>
             <option value="all">全員</option>
             {members.map(m=><option key={m.uid} value={m.uid}>{m.uid===user.uid?`${m.displayName}（我）`:m.displayName}</option>)}
           </select>
@@ -2650,7 +2653,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           {/* 城市：多個才顯示 */}
           {(shopOptions.cities||[]).length > 1 && (
             <select value={shopFilterCity} onChange={e=>{setShopFilterCity(e.target.value);setShopFilterMall('全部商場');}}
-              style={{ flex:1, minWidth:80, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterCity!=='全部城市'?'#BE185D':C.border}`, backgroundColor:shopFilterCity!=='全部城市'?'#FDE8F3':C.bg, color:shopFilterCity!=='全部城市'?'#BE185D':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
+              style={{ flex:1, minWidth:80, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterCity!=='全部城市'?C.warm:C.border}`, backgroundColor:shopFilterCity!=='全部城市'?C.warmSoft:C.bg, color:shopFilterCity!=='全部城市'?C.warm:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
               <option value="全部城市">全部城市</option>
               {(shopOptions.cities||[]).map(c=><option key={c} value={c}>{c}</option>)}
             </select>
@@ -2664,7 +2667,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             if (districts.length === 0) return null;
             return (
               <select value={shopFilterCity==='全部城市'&&cities.length===1?shopFilterCity:shopFilterCity} onChange={e=>{setShopFilterCity(e.target.value);setShopFilterMall('全部商場');}}
-                style={{ flex:1, minWidth:80, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterCity!=='全部城市'&&districts.includes(shopFilterCity)?'#BE185D':C.border}`, backgroundColor:districts.includes(shopFilterCity)?'#FDE8F3':C.bg, color:districts.includes(shopFilterCity)?'#BE185D':C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
+                style={{ flex:1, minWidth:80, padding:'7px 6px', borderRadius:10, border:`1.5px solid ${shopFilterCity!=='全部城市'&&districts.includes(shopFilterCity)?C.warm:C.border}`, backgroundColor:districts.includes(shopFilterCity)?C.warmSoft:C.bg, color:districts.includes(shopFilterCity)?C.warm:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer', outline:'none', textAlign:'center' }}>
                 <option value="全部城市">全部地區</option>
                 {districts.map(d=><option key={d} value={d}>{d}</option>)}
               </select>
@@ -2704,7 +2707,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                 <div key={item.id} style={{ ...gs.card, padding:'14px 16px', opacity:item.isBought?0.65:1 }}>
                   <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:8 }}>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap', flex:1 }}>
-                      {item.district && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'#FDE8F3', color:'#BE185D', border:'1px solid #F9B8DA', fontSize:11, fontWeight:700 }}>📍 {item.district}</span>}
+                      {item.district && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.warmSoft, color:C.warm, border:`1px solid ${C.warmBorder}`, fontSize:11, fontWeight:700 }}>📍 {item.district}</span>}
                       {item.mall && <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.purpleSoft, color:C.purple, fontSize:11, fontWeight:700 }}>🏪 {item.mall}</span>}
                     </div>
                     {isMine && (
@@ -2725,7 +2728,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         setShopBoughtCurrency((tripCurrencies||['JPY'])[0]||'JPY');
                         setShopBoughtNote('');
                       }
-                    }} style={{ width:28, height:28, borderRadius:8, border:`2px solid ${item.isBought?'#BE185D':C.border}`, backgroundColor:item.isBought?'#BE185D':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
+                    }} style={{ width:28, height:28, borderRadius:8, border:`2px solid ${item.isBought?C.warm:C.border}`, backgroundColor:item.isBought?C.warm:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
                       {item.isBought && <span style={{ color:'#fff', fontSize:14, fontWeight:800 }}>✓</span>}
                     </button>
                     <div style={{ flex:1 }}>
@@ -2734,14 +2737,14 @@ function TripDetailScreen({ user, trip, onBack }) {
                     </div>
                   </div>
                   {item.isBought && item.boughtPrice && (
-                    <div style={{ marginTop:6, padding:'5px 10px', backgroundColor:'#FDE8F3', borderRadius:8, fontSize:11, color:'#BE185D', fontWeight:700, display:'flex', gap:6, alignItems:'center' }}>
+                    <div style={{ marginTop:6, padding:'5px 10px', backgroundColor:C.warmSoft, borderRadius:8, fontSize:11, color:C.warm, fontWeight:700, display:'flex', gap:6, alignItems:'center' }}>
                       <span>✓ 已買</span>
                       <span>{item.boughtCurrency} {Number(item.boughtPrice).toLocaleString()}</span>
                       {item.boughtNote && <span style={{ color:C.textMuted, fontWeight:400 }}>· {item.boughtNote}</span>}
                     </div>
                   )}
                   {item.isBought && !item.boughtPrice && (
-                    <div style={{ marginTop:6, padding:'5px 10px', backgroundColor:'#FDE8F3', borderRadius:8, fontSize:11, color:'#BE185D', fontWeight:700 }}>✓ 已買</div>
+                    <div style={{ marginTop:6, padding:'5px 10px', backgroundColor:C.warmSoft, borderRadius:8, fontSize:11, color:C.warm, fontWeight:700 }}>✓ 已買</div>
                   )}
                   {item.photos?.length > 0 && (
                     <div style={{ display:'flex', gap:6, overflowX:'auto', marginTop:8, marginBottom:4 }}>
@@ -2752,9 +2755,9 @@ function TripDetailScreen({ user, trip, onBack }) {
                     <div style={{ fontSize:10, color:C.textMuted }}>{item.addedByName||'成員'} 許願</div>
                     <div style={{ display:'flex', gap:6 }}>
                       {(item.branches||[]).filter(b=>b.mapUrl).map((b,bi)=>(
-                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:'1px solid #F9B8DA', backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name}</button>
+                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name}</button>
                       ))}
-                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:'1px solid #F9B8DA', backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺</button>}
+                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺</button>}
                     </div>
                   </div>
                 </div>
@@ -2778,7 +2781,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           branches: selectedDistrict ? [{name:selectedDistrict, mapUrl:''}] : [],
         }});
         setShopTempPhotos([]);
-      }} style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(190,24,93,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+      }} style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.warm},${C.warm})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(190,24,93,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
     </div>
   );
   };
@@ -2929,7 +2932,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     const moreItems = [
       { id:'shared-memo', emoji:'📋', label:'共用備忘錄', desc:`${sharedMemos.length} 則`, color:C.blue, bg:C.blueSoft },
       { id:'personal-memo', emoji:'🗒', label:'個人備忘錄', desc:`${personalMemos.length} 則`, color:C.purple, bg:C.purpleSoft },
-      { id:'members', emoji:'👥', label:'成員', desc:`${members.length} 人`, color:'#D97706', bg:'#FEF3E8' },
+      { id:'members', emoji:'👥', label:'成員', desc:`${members.length} 人`, color:C.warm, bg:C.warmSoft },
       { id:'invite', emoji:'🔑', label:'邀請碼', desc:trip.inviteCode||'...', color:C.green, bg:C.greenSoft },
     ];
     return (
@@ -3039,7 +3042,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 {cities.map(city => (
                   <button key={city} type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,city:city,districts:[],branches:[]}}))}
-                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.city===city?'#D97706':C.border}`, backgroundColor:d.city===city?'#D97706':C.bg, color:d.city===city?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.city===city?C.warm:C.border}`, backgroundColor:d.city===city?C.warm:C.bg, color:d.city===city?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                     {city}
                   </button>
                 ))}
@@ -3071,13 +3074,13 @@ function TripDetailScreen({ user, trip, onBack }) {
               <label style={gs.label}>🗺 各地區地圖連結</label>
               {branches.map((b, bi) => (
                 <div key={bi} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
-                  <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:'#FEF3E8', color:'#D97706', fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
+                  <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:C.warmSoft, color:C.warm, fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
                   <input style={{ ...gs.input, flex:1, padding:'10px 12px', fontSize:14 }} placeholder="貼上 Google Maps 連結" value={b.mapUrl||''}
                     onChange={e => setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:e.target.value}:x)}}))} />
                 </div>
               ))}
               <button type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,branches:[...(p.data.branches||[]),{name:'',mapUrl:''}]}}))}
-                style={{ fontSize:12, color:'#D97706', fontWeight:700, background:'none', border:'none', cursor:'pointer', padding:'4px 0' }}>＋ 新增分店</button>
+                style={{ fontSize:12, color:C.warm, fontWeight:700, background:'none', border:'none', cursor:'pointer', padding:'4px 0' }}>＋ 新增分店</button>
             </div>
           ) : (
             <div style={{ marginBottom:14 }}>
@@ -3135,7 +3138,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             const fd = { ...d, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:d.createdAt||Date.now() };
             const n = d.id ? foodItems.map(i=>i.id===d.id?fd:i) : [...foodItems,{...fd,id:Date.now()}];
             setFoodItems(n); saveFood(n); setFoodModal({open:false,data:null});
-          }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:'linear-gradient(135deg,#D97706,#F59E0B)', color:'#fff' }}>確認儲存</button>
+          }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${C.warm},${C.warm})`, color:'#fff' }}>確認儲存</button>
         </div>
       </div>
     );
@@ -3255,7 +3258,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 {cities.map(city => (
                   <button key={city} type="button" onClick={() => setShoppingModal(p=>({...p,data:{...p.data,city,district:'',mall:'',branches:[]}}))}
-                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${activeCity===city?'#BE185D':C.border}`, backgroundColor:activeCity===city?'#BE185D':C.bg, color:activeCity===city?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                    style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${activeCity===city?C.warm:C.border}`, backgroundColor:activeCity===city?C.warm:C.bg, color:activeCity===city?'#fff':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                     {city}
                   </button>
                 ))}
@@ -3275,7 +3278,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       district: isRemoving ? '' : dist,
                       branches: isRemoving ? [] : [{name:dist, mapUrl:''}],
                     }}));
-                  }} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.district===dist?'#BE185D':C.border}`, backgroundColor:d.district===dist?'#FDE8F3':C.bg, color:d.district===dist?'#BE185D':C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                  }} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${d.district===dist?C.warm:C.border}`, backgroundColor:d.district===dist?C.warmSoft:C.bg, color:d.district===dist?C.warm:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                     📍 {dist}
                   </button>
                 ))}
@@ -3317,13 +3320,13 @@ function TripDetailScreen({ user, trip, onBack }) {
               <label style={gs.label}>🗺 分店 / 地圖連結</label>
               {branches.map((b,bi) => (
                 <div key={bi} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
-                  <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:'#FDE8F3', color:'#BE185D', fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
+                  <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:C.warmSoft, color:C.warm, fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
                   <input style={{ ...gs.input, flex:1, padding:'10px 12px', fontSize:14 }} placeholder="貼上 Google Maps 連結"
                     value={b.mapUrl||''} onChange={e=>setShoppingModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:e.target.value}:x)}}))} />
                 </div>
               ))}
               <button type="button" onClick={() => setShoppingModal(p=>({...p,data:{...p.data,branches:[...branches,{name:'',mapUrl:''}]}}))}
-                style={{ fontSize:12, color:'#BE185D', fontWeight:700, background:'none', border:'none', cursor:'pointer' }}>＋ 新增分店</button>
+                style={{ fontSize:12, color:C.warm, fontWeight:700, background:'none', border:'none', cursor:'pointer' }}>＋ 新增分店</button>
             </div>
           ) : (
             <div style={{ marginBottom:14 }}>
@@ -3387,7 +3390,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             const n = d.id ? shoppingItems.map(i=>i.id===d.id?fd:i) : [...shoppingItems,{...fd,id:Date.now()}];
             setShoppingItems(n); saveShopping(n);
             setShoppingModal({open:false,data:null}); setShopTempPhotos([]);
-          }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:'linear-gradient(135deg,#BE185D,#EC4899)', color:'#fff' }}>確認儲存</button>
+          }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${C.warm},${C.warm})`, color:'#fff' }}>確認儲存</button>
         </div>
       </div>
     );
@@ -3420,15 +3423,15 @@ function TripDetailScreen({ user, trip, onBack }) {
             <label style={gs.label}>📍 地區</label>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
               {allDistricts.map(({city,district}) => (
-                <div key={`${city}-${district}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:'#FDE8F3', border:'1px solid #F9B8DA', borderRadius:20 }}>
-                  {cities.length>1 && <span style={{ fontSize:11, color:'#BE185D', opacity:0.7 }}>{city} · </span>}
-                  <span style={{ fontSize:13, fontWeight:700, color:'#BE185D' }}>{district}</span>
+                <div key={`${city}-${district}`} style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', backgroundColor:C.warmSoft, border:`1px solid ${C.warmBorder}`, borderRadius:20 }}>
+                  {cities.length>1 && <span style={{ fontSize:11, color:C.warm, opacity:0.7 }}>{city} · </span>}
+                  <span style={{ fontSize:13, fontWeight:700, color:C.warm }}>{district}</span>
                   <button onClick={() => {
                     const newLocs = {...locationsMap, [city]:(locationsMap[city]||[]).filter(x=>x!==district)};
                     const newMalls = {...mallsMap};
                     if(newMalls[city]) delete newMalls[city][district];
                     updateOpts({...shopOptions, locations:newLocs, malls:newMalls});
-                  }} style={{ background:'none', border:'none', color:'#BE185D', fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
+                  }} style={{ background:'none', border:'none', color:C.warm, fontSize:16, cursor:'pointer', lineHeight:1, padding:0, opacity:0.7 }}>×</button>
                 </div>
               ))}
               {allDistricts.length===0 && <div style={{ fontSize:12, color:C.textMuted }}>尚未新增地區</div>}
@@ -3448,7 +3451,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                 if(!city) return;
                 updateOpts({...shopOptions, locations:{...locationsMap,[city]:[...(locationsMap[city]||[]),newDistrict.trim()]}});
                 setNewDistrict('');
-              }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
+              }} style={{ padding:'12px 16px', border:'none', borderRadius:12, backgroundColor:C.warm, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>＋</button>
             </div>
           </div>
 
@@ -3598,8 +3601,12 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput key="wallet-note" style={gs.input} placeholder="選填" value={d.note||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,note:v}}))} /></div>
 
           <button onClick={()=>{
-            if(!d.name?.trim()||!d.amount||!d.date) return;
-            const dateFormatted = d.date.includes('-') ? d.date.split('-').slice(1).join('/') : d.date;
+            if(!d.name?.trim()||!d.amount) return;
+            // 如果使用者沒動日期欄位，使用今天的日期
+            const _today = new Date();
+            const _defaultDate = `${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
+            const _date = d.date || _defaultDate;
+            const dateFormatted = _date.includes('-') ? _date.split('-').slice(1).join('/') : _date;
             const now = Date.now();
             const fd = { ...d, date:dateFormatted, editedByName:user.displayName||user.email, editedById:user.uid,
               createdAt: d.createdAt||now,
@@ -3910,7 +3917,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16, backgroundColor:'rgba(45,42,36,0.5)' }}>
           <div style={{ ...gs.card, width:'100%', maxWidth:340 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-              <div style={{ fontSize:16, fontWeight:800, color:'#BE185D' }}>記錄購買金額</div>
+              <div style={{ fontSize:16, fontWeight:800, color:C.warm }}>記錄購買金額</div>
               <button onClick={() => setShopBoughtModal(null)} style={{ background:'none', border:'none', fontSize:24, cursor:'pointer', color:C.textMuted }}>×</button>
             </div>
             <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:C.text }}>{shopBoughtModal.item.name}</div>
@@ -3930,7 +3937,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                 const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`;
                 const n=shoppingItems.map(i=>i.id===shopBoughtModal.item.id?{...i,isBought:true,boughtAt:ts,boughtPrice:shopBoughtPrice||null,boughtCurrency:shopBoughtCurrency,boughtNote:shopBoughtNote||null}:i);
                 setShoppingItems(n);saveShopping(n);setShopBoughtModal(null);
-              }} style={{ flex:1, padding:12, border:'none', borderRadius:12, backgroundColor:'#BE185D', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>確認已買</button>
+              }} style={{ flex:1, padding:12, border:'none', borderRadius:12, backgroundColor:C.warm, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>確認已買</button>
               <button onClick={() => {
                 const now=new Date(); const ts=`${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')}`;
                 const n=shoppingItems.map(i=>i.id===shopBoughtModal.item.id?{...i,isBought:true,boughtAt:ts,boughtPrice:null,boughtCurrency:null,boughtNote:null}:i);
