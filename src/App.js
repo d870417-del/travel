@@ -1331,8 +1331,21 @@ function TripDetailScreen({ user, trip, onBack }) {
   }
 
   // ── helpers ──
+  // 自動選最近日期邏輯
+  const effectiveDate = (() => {
+    if (tripDates.includes(selectedDate)) return selectedDate;
+    const today = new Date();
+    const datesOnly = tripDates.filter(d=>d!=='待安排');
+    if (!datesOnly.length) return selectedDate;
+    const toDate = s => { const [m,d]=s.split('/'); return new Date(today.getFullYear(),Number(m)-1,Number(d)); };
+    let closest = datesOnly[0];
+    let minDiff = Math.abs(toDate(datesOnly[0])-today);
+    datesOnly.forEach(d=>{ const diff=Math.abs(toDate(d)-today); if(diff<minDiff){minDiff=diff;closest=d;} });
+    return closest;
+  })();
+
   const filteredItinerary = itinerary
-    .filter(i=>i.date===selectedDate)
+    .filter(i=>i.date===effectiveDate)
     .sort((a,b)=>selectedDate==='待安排'?(a.createdAt||0)-(b.createdAt||0):(a.time||'').localeCompare(b.time||''));
 
   const shopFiltered = shoppingItems.filter(item => {
@@ -1482,7 +1495,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
           {tripDates.map(d => (
             <div key={d} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
-              <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${effectiveDate===d?color:C.border}`, backgroundColor:effectiveDate===d?color:C.surface, color:effectiveDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
+              <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
               {d!=='待安排' && <button onClick={() => setConfirmDel({title:'刪除日期',message:`確定刪除 ${d} 的日期？日期內的行程不會被刪除。`,fn:()=>handleDeleteDate(d)})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
             </div>
           ))}
