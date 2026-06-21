@@ -2044,7 +2044,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                     <div key={gi} style={{ ...gs.card, padding:'14px 16px', marginBottom:10, opacity:allSettled?0.6:1, backgroundColor:iAmPayer?C.greenSoft:C.surface, border:`1px solid ${iAmPayer?C.green:C.border}22` }}>
                       {/* 標題 */}
                       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
-                        <div>
+                        <div style={{ flex:1 }}>
                           <div style={{ fontSize:14, fontWeight:800, color:C.text }}>{r0.note||'代墊'}</div>
                           <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>
                             <span style={{ color:iAmPayer?C.green:C.text, fontWeight:600 }}>{iAmPayer?'我':payerM.displayName}</span>
@@ -2052,8 +2052,27 @@ function TripDetailScreen({ user, trip, onBack }) {
                             {allSettled && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓ 全部還清</span>}
                           </div>
                         </div>
-                        <div style={{ fontSize:14, fontWeight:800, color:iAmPayer?C.green:C.text }}>
-                          {SYM[r0.currency]||''}{total.toLocaleString()} {r0.currency}
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <div style={{ fontSize:14, fontWeight:800, color:iAmPayer?C.green:C.text }}>
+                            {SYM[r0.currency]||''}{total.toLocaleString()} {r0.currency}
+                          </div>
+                          <button onClick={() => setSplitModal({open:true, data:{
+                            payerId: r0.payerId,
+                            receiverIds: recs.map(r=>r.receiverId),
+                            amount: String(total),
+                            currency: r0.currency,
+                            note: r0.note||'',
+                            editingIds: recs.map(r=>r.id),
+                          }})} style={{ padding:'4px 7px', border:`1px solid ${C.border}`, borderRadius:7, backgroundColor:C.bg, color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
+                          <button onClick={() => setConfirmDel({
+                            title:'刪除代墊',
+                            message:`確定刪除「${r0.note||'代墊'}」？`,
+                            fn: () => {
+                              const ids = new Set(recs.map(r=>String(r.id)));
+                              const nr = splitRecords.filter(r=>!ids.has(String(r.id)));
+                              setSplitRecords(nr); saveSplitRecords(nr);
+                            }
+                          })} style={{ padding:'4px 7px', border:`1px solid ${C.danger}33`, borderRadius:7, backgroundColor:'#FDE8E8', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                         </div>
                       </div>
 
@@ -2123,7 +2142,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             {Object.entries(calcTotals(activeItems)).map(([cur,val])=>(
               <div key={cur} style={{ flexShrink:0, padding:'8px 14px', borderRadius:12, backgroundColor:val>=0?(CurrencyBg[cur]||C.greenSoft):'#FFF0F0', border:`1px solid ${val>=0?(CurrencyC[cur]||C.green):C.danger}33` }}>
                 <div style={{ fontSize:10, color:C.textMuted, marginBottom:2 }}>{cur} 餘額</div>
-                <div style={{ fontSize:16, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
+                <div style={{ fontSize:16, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
                 <div style={{ fontSize:10, color:C.textMuted }}>≈ NT${toTWD(Math.abs(val),cur).toLocaleString()}</div>
               </div>
             ))}
@@ -2151,7 +2170,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             {Object.keys(dailySum).length>0 && (
               <div style={{ display:'flex', gap:10, marginTop:8, flexWrap:'wrap' }}>
                 {Object.entries(dailySum).map(([cur,val])=>(
-                  <span key={cur} style={{ fontSize:11, fontWeight:700, color:val>=0?C.green:C.danger }}>{cur} {val>=0?'+':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</span>
+                  <span key={cur} style={{ fontSize:11, fontWeight:700, color:val>=0?C.green:C.danger }}>{cur} {val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</span>
                 ))}
               </div>
             )}
