@@ -1898,7 +1898,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     // ── 代墊結算頁 ──
     if(walletSubTab==='split-detail') return (
       <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
-        <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:30 }}>
           <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
           <div style={{ fontSize:15, fontWeight:800 }}>🔄 代墊結算</div>
         </div>
@@ -2263,7 +2263,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     return (
       <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
         {/* 次頁 header */}
-        <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:30 }}>
           <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
           <div style={{ fontSize:15, fontWeight:800 }}>{pageTitle}</div>
         </div>
