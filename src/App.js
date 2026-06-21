@@ -1971,12 +1971,12 @@ function TripDetailScreen({ user, trip, onBack }) {
                             // 我自己的帳務
                             const myLabel=isIPaying1?`還款・${itemNote}（還給 ${counterM1.displayName}）`:`收款・${itemNote}（${counterM1.displayName} 還）`;
                             const myType=isIPaying1?'支出':'存入';
-                            const myEntry={id:now+998,name:myLabel,amount:t.amount,currency:t.currency,type:myType,date:mmdd,note:'代墊結清',editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                            const myEntry={id:now+998,name:myLabel,amount:t.amount,currency:t.currency,type:myType,date:mmdd,note:'代墊結清',counterpartUid:otherUid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                             const np=[...personalWalletItems,myEntry];setPersonalWalletItems(np);savePersonalWallet(np);
                             // 對方的帳務（用對方的 uid 存到對方的個人帳）
                             const otherLabel=isIPaying1?`收款・${itemNote}（${myName1} 還）`:`還款・${itemNote}（還給 ${myName1}）`;
                             const otherType=isIPaying1?'存入':'支出';
-                            const otherEntry={id:now+999,name:otherLabel,amount:t.amount,currency:t.currency,type:otherType,date:mmdd,note:'代墊結清',editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                            const otherEntry={id:now+999,name:otherLabel,amount:t.amount,currency:t.currency,type:otherType,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                             getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`)).then(snap=>{
                               const items=snap.exists()?snap.data().items||[]:[];
                               setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`), { items:JSON.parse(JSON.stringify([...items,otherEntry])), updatedAt:serverTimestamp() });
@@ -2022,11 +2022,11 @@ function TripDetailScreen({ user, trip, onBack }) {
                             const myName2=user.displayName||user.email||'我';
                             const myLbl=isIPaying2?`還款・${itNote2}（還給 ${ctrM2.displayName}）`:`收款・${itNote2}（${ctrM2.displayName} 還）`;
                             const myTyp=isIPaying2?'支出':'存入';
-                            newEntries.push({id:now+newEntries.length+999,name:myLbl,amount:t.amount,currency:t.currency,type:myTyp,date:mmdd,note:'代墊結清',editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now});
+                            newEntries.push({id:now+newEntries.length+999,name:myLbl,amount:t.amount,currency:t.currency,type:myTyp,date:mmdd,note:'代墊結清',counterpartUid:othUid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now});
                             // 對方帳務
                             const othLbl=isIPaying2?`收款・${itNote2}（${myName2} 還）`:`還款・${itNote2}（還給 ${myName2}）`;
                             const othTyp=isIPaying2?'存入':'支出';
-                            const othEntry={id:now+newEntries.length+9990,name:othLbl,amount:t.amount,currency:t.currency,type:othTyp,date:mmdd,note:'代墊結清',editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                            const othEntry={id:now+newEntries.length+9990,name:othLbl,amount:t.amount,currency:t.currency,type:othTyp,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                             getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid}`)).then(snap=>{
                               const its=snap.exists()?snap.data().items||[]:[];
                               setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid}`),{items:JSON.parse(JSON.stringify([...its,othEntry])),updatedAt:serverTimestamp()});
@@ -2061,12 +2061,12 @@ function TripDetailScreen({ user, trip, onBack }) {
                           const myName3=user.displayName||user.email||'我';
                           const myLbl2=isIPaying3?`還款・${itNote3}（還給 ${ctrM3.displayName}）`:`收款・${itNote3}（${ctrM3.displayName} 還）`;
                           const myTyp2=isIPaying3?'支出':'存入';
-                          const myEntry2={id:now+998,name:myLbl2,amount:t.amount,currency:t.currency,type:myTyp2,date:mmdd,note:'代墊結清',editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                          const myEntry2={id:now+998,name:myLbl2,amount:t.amount,currency:t.currency,type:myTyp2,date:mmdd,note:'代墊結清',counterpartUid:othUid2,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                           const np=[...personalWalletItems,myEntry2];setPersonalWalletItems(np);savePersonalWallet(np);
                           // 對方帳務
                           const othLbl2=isIPaying3?`收款・${itNote3}（${myName3} 還）`:`還款・${itNote3}（還給 ${myName3}）`;
                           const othTyp2=isIPaying3?'存入':'支出';
-                          const othEntry2={id:now+999,name:othLbl2,amount:t.amount,currency:t.currency,type:othTyp2,date:mmdd,note:'代墊結清',editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
+                          const othEntry2={id:now+999,name:othLbl2,amount:t.amount,currency:t.currency,type:othTyp2,date:mmdd,note:'代墊結清',counterpartUid:user.uid,editedByName:user.displayName||user.email,editedById:user.uid,createdAt:now};
                           getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`)).then(snap=>{
                             const its=snap.exists()?snap.data().items||[]:[];
                             setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${othUid2}`),{items:JSON.parse(JSON.stringify([...its,othEntry2])),updatedAt:serverTimestamp()});
@@ -2203,8 +2203,8 @@ function TripDetailScreen({ user, trip, onBack }) {
                                   const counterMp=members.find(m=>m.uid===otherUid)||{displayName:'對方'};
                                   const payerMp=members.find(m=>m.uid===r.payerId)||{displayName:'?'};
                                   const myNameP=user.displayName||user.email||'我';
-                                  const myEntry = { id:now+10, name:iAmPayer?`收款・${itemNote}（${counterMp.displayName} 還）`:`還款・${itemNote}（還給 ${payerMp.displayName}）`, amount:r.amount, currency:r.currency, type:iAmPayer?'存入':'支出', date:mmdd, note:'代墊已還', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
-                                  const otherEntry = { id:now+11, name:iAmPayer?`還款・${itemNote}（還給 ${myNameP}）`:`收款・${itemNote}（${myNameP} 還）`, amount:r.amount, currency:r.currency, type:iAmPayer?'支出':'存入', date:mmdd, note:'代墊已還', editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                                  const myEntry = { id:now+10, name:iAmPayer?`收款・${itemNote}（${counterMp.displayName} 還）`:`還款・${itemNote}（還給 ${payerMp.displayName}）`, amount:r.amount, currency:r.currency, type:iAmPayer?'存入':'支出', date:mmdd, note:'代墊已還', counterpartUid:otherUid, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
+                                  const otherEntry = { id:now+11, name:iAmPayer?`還款・${itemNote}（還給 ${myNameP}）`:`收款・${itemNote}（${myNameP} 還）`, amount:r.amount, currency:r.currency, type:iAmPayer?'支出':'存入', date:mmdd, note:'代墊已還', counterpartUid:user.uid, editedByName:user.displayName||user.email, editedById:user.uid, createdAt:now };
                                   const np = [...personalWalletItems, myEntry];
                                   setPersonalWalletItems(np); savePersonalWallet(np);
                                   getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${otherUid}`)).then(snap=>{
@@ -2339,24 +2339,41 @@ function TripDetailScreen({ user, trip, onBack }) {
                             <button onClick={()=>{setWalletModal({open:true,data:{...item,contributorIds:item.contributorIds||allUids,forMemberIds:item.forMemberIds||allUids}});setWalletCalc(false);}} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
                           )}
                           <button onClick={()=>{
+                            const isAutoEntry = item.note==='代墊已還'||item.note==='代墊結清';
+                            const deleteCounterpart = () => {
+                              // 同時刪除對方個人帳務中對應的記錄
+                              const cpUid = item.counterpartUid;
+                              if (!cpUid) return;
+                              getDoc(doc(db,"tripData",`${trip.id}_personalWallet_${cpUid}`)).then(snap=>{
+                                if(!snap.exists()) return;
+                                const its=snap.data().items||[];
+                                const f=its.filter(pw=>!(
+                                  (pw.note==='代墊已還'||pw.note==='代墊結清') &&
+                                  pw.counterpartUid===user.uid &&
+                                  pw.amount===item.amount && pw.currency===item.currency &&
+                                  Math.abs((pw.createdAt||0)-(item.createdAt||0))<5000
+                                ));
+                                if(f.length<its.length) setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${cpUid}`),{items:JSON.parse(JSON.stringify(f)),updatedAt:serverTimestamp()});
+                              });
+                            };
                             if(item.note==='代墊已還') {
-                              // 先刪除，再詢問是否還原分攤
-                              setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>{
+                              setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？\n對方的對應記錄也會一起刪除。`,fn:()=>{
                                 setActiveItems(p=>p.filter(i=>i.id!==item.id));
+                                deleteCounterpart();
                                 setSplitRestorePrompt({item});
                               }});
-                            } else {
-                              setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？${item.note==='代墊結清'?'\n（相關代墊記錄將恢復為未結清）':''}`,fn:()=>{
+                            } else if(item.note==='代墊結清') {
+                              setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？\n對方的對應記錄也會一起刪除。\n代墊記錄也將恢復為未結清。`,fn:()=>{
                                 setActiveItems(p=>p.filter(i=>i.id!==item.id));
-                                // 代墊結清記錄：把對應的 splitRecords 還原為未結清
-                                if (item.note==='代墊結清' && item.createdAt) {
-                                  const nr = splitRecords.map(sr =>
-                                    Math.abs((sr.settledAt||0) - item.createdAt) < 5000
-                                      ? {...sr, settled:false, settledAt:null}
-                                      : sr
-                                  );
+                                deleteCounterpart();
+                                if(item.createdAt){
+                                  const nr=splitRecords.map(sr=>Math.abs((sr.settledAt||0)-item.createdAt)<5000?{...sr,settled:false,settledAt:null}:sr);
                                   setSplitRecords(nr); saveSplitRecords(nr);
                                 }
+                              }});
+                            } else {
+                              setConfirmDel({title:'刪除帳目',message:`確定刪除「${item.name}」？`,fn:()=>{
+                                setActiveItems(p=>p.filter(i=>i.id!==item.id));
                               }});
                             }
                           }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
