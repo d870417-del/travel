@@ -1103,7 +1103,11 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [members, setMembers] = useState([]);
   const [itinerary, setItinerary] = useState([]);
   const [tripDates, setTripDates] = useState(['待安排']);
-  const [selectedDate, setSelectedDate] = useState('待安排');
+  const [selectedDate, setSelectedDate] = useState(()=>{
+    const n=new Date();
+    const today=`${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')}`;
+    return today; // 之後在 ItineraryTab 裡會 fallback 到最近的日期
+  });
   const [foodItems, setFoodItems] = useState([]);
   const [foodOptions, setFoodOptions] = useState({ cities:[], districts:{}, foodTypes:['必吃','咖啡甜點','居酒屋','拉麵','燒肉','海鮮','其他'] });
   const [shoppingItems, setShoppingItems] = useState([]);
@@ -1117,10 +1121,14 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [showCurrencySettings, setShowCurrencySettings] = useState(false);
   const [manualRates, setManualRates] = useState({}); // 手動覆蓋的匯率
   const [walletSubTab, setWalletSubTab] = useState('overview');
-  const [walletSelectedDate, setWalletSelectedDate] = useState('');
+  const [walletSelectedDate, setWalletSelectedDate] = useState(()=>{
+    const n=new Date();
+    return `${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')}`;
+  });
   const [showPoolSettlement, setShowPoolSettlement] = useState(false);
   const [showPersonalSettlement, setShowPersonalSettlement] = useState(false);
   const [splitModal, setSplitModal] = useState({ open:false, data:null });
+  const [splitEditTarget, setSplitEditTarget] = useState(null); // 編輯的 group
   const [walletModal, setWalletModal] = useState({ open:false, data:null });
   const [walletCalc, setWalletCalc] = useState(false);
   const [transferStates, setTransferStates] = useState({});
@@ -1474,7 +1482,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
           {tripDates.map(d => (
             <div key={d} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
-              <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
+              <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${effectiveDate===d?color:C.border}`, backgroundColor:effectiveDate===d?color:C.surface, color:effectiveDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
               {d!=='待安排' && <button onClick={() => setConfirmDel({title:'刪除日期',message:`確定刪除 ${d} 的日期？日期內的行程不會被刪除。`,fn:()=>handleDeleteDate(d)})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
             </div>
           ))}
@@ -1799,7 +1807,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               {Object.entries(sharedTotals).map(([cur,val])=>(
                 <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?(CurrencyBg[cur]||'#F0FFF4'):'#FFF0F0', border:`1px solid ${val>=0?(CurrencyC[cur]||C.green):C.danger}33` }}>
                   <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
                 </div>
               ))}
             </div>
@@ -1820,7 +1828,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               {Object.entries(personalTotals).map(([cur,val])=>(
                 <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?(CurrencyBg[cur]||'#F0FFF4'):'#FFF0F0', border:`1px solid ${val>=0?(CurrencyC[cur]||C.green):C.danger}33` }}>
                   <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
                 </div>
               ))}
             </div>
@@ -1901,7 +1909,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                   return (
                     <div key={gi} style={{ ...gs.card, padding:'16px', backgroundColor:iAmTo?C.greenSoft:iAmFrom?C.dangerSoft:C.surface }}>
                       {/* 誰欠誰 */}
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                         <div style={{ fontSize:15, fontWeight:800 }}>
                           <span style={{ color:iAmFrom?C.danger:C.text }}>{iAmFrom?'我':fromM.displayName}</span>
                           <span style={{ color:C.textMuted, margin:'0 8px' }}>→</span>
@@ -1912,6 +1920,10 @@ function TripDetailScreen({ user, trip, onBack }) {
                             {iAmTo?'待收款':'待還款'}
                           </div>
                         )}
+                      </div>
+                      {/* 台幣總計 */}
+                      <div style={{ fontSize:12, color:C.textMuted, marginBottom:12 }}>
+                        合計 ≈ NT${g.items.reduce((s,t)=>s+toTWD(t.amount,t.currency),0).toLocaleString()}
                       </div>
 
                       {/* 各幣別 */}
@@ -3222,7 +3234,7 @@ function TripDetailScreen({ user, trip, onBack }) {
 
 
 
-          <div style={{ marginBottom:12 }}><label style={gs.label}>日期</label><input type="date" style={gs.input} value={d.date||''} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,date:e.target.value}}))} /></div>
+          <div style={{ marginBottom:12 }}><label style={gs.label}>日期</label><input type="date" style={gs.input} value={d.date||(()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()} onChange={e=>setWalletModal(p=>({...p,data:{...p.data,date:e.target.value}}))} /></div>
           <div style={{ marginBottom:16 }}><label style={gs.label}>備註</label><ImeInput key="wallet-note" style={gs.input} placeholder="選填" value={d.note||''} onChange={v=>setWalletModal(p=>({...p,data:{...p.data,note:v}}))} /></div>
 
           <button onClick={()=>{
@@ -3448,7 +3460,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(45,42,36,0.5)', display:'flex', alignItems:'flex-end', zIndex:300 }}>
             <div style={{ ...gs.card, width:'100%', borderBottomLeftRadius:0, borderBottomRightRadius:0, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderBottom:'none' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
-                <div style={{ fontSize:16, fontWeight:800 }}>新增代墊</div>
+                <div style={{ fontSize:16, fontWeight:800 }}>{sd.editingIds && sd.editingIds.length>0 ? '編輯代墊' : '新增代墊'}</div>
                 <button onClick={() => setSplitModal({open:false,data:null})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:24, cursor:'pointer' }}>×</button>
               </div>
 
@@ -3518,9 +3530,15 @@ function TripDetailScreen({ user, trip, onBack }) {
                   currency: sd.currency||'JPY',
                   note: sd.note||'',
                   createdAt: now,
-                })).filter(r=>r.receiverId!==sd.payerId); // 付款人自己不用還自己
+                })).filter(r=>r.receiverId!==sd.payerId);
                 if(newRecs.length===0) return;
-                const nr=[...splitRecords,...newRecs]; setSplitRecords(nr); saveSplitRecords(nr);
+                // 編輯模式：先刪舊的
+                let base = [...splitRecords];
+                if(sd.editingIds && sd.editingIds.length>0) {
+                  const ids = new Set(sd.editingIds.map(String));
+                  base = base.filter(r=>!ids.has(String(r.id)));
+                }
+                const nr=[...base,...newRecs]; setSplitRecords(nr); saveSplitRecords(nr);
                 setSplitModal({open:false,data:null});
               }} style={{ width:'100%', border:'none', borderRadius:13, padding:14, fontSize:15, fontWeight:700, cursor:'pointer', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff' }}>確認儲存</button>
             </div>
