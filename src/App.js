@@ -2145,11 +2145,11 @@ function TripDetailScreen({ user, trip, onBack }) {
                           const iAmReceiver = r.receiverId === user.uid;
                           const isSelf = r.payerId === r.receiverId;
                           return (
-                            <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:8, backgroundColor:r.settled?'transparent':iAmReceiver?C.dangerSoft:'transparent' }}>
-                              <div style={{ width:5, height:5, borderRadius:'50%', backgroundColor:r.settled?C.green:iAmReceiver?C.danger:C.textMuted, flexShrink:0 }} />
-                              <div style={{ flex:1, fontSize:12, fontWeight:600, color:r.settled?C.textMuted:iAmReceiver?C.danger:C.text }}>
+                            <div key={ri} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:8, backgroundColor:r.settled?'transparent':(!isSelf&&iAmReceiver)?C.dangerSoft:'transparent' }}>
+                              <div style={{ width:5, height:5, borderRadius:'50%', backgroundColor:r.settled?C.green:(!isSelf&&iAmReceiver)?C.danger:C.textMuted, flexShrink:0 }} />
+                              <div style={{ flex:1, fontSize:12, fontWeight:600, color:r.settled?C.textMuted:(!isSelf&&iAmReceiver)?C.danger:C.text }}>
                                 {iAmReceiver?'我':receiverM.displayName}
-                                {isSelf && <span style={{ fontSize:10, color:C.textMuted, marginLeft:4 }}>(付款人)</span>}
+                                {isSelf && <span style={{ fontSize:10, color:C.textMuted, marginLeft:4 }}>(自付)</span>}
                               </div>
                               <div style={{ fontSize:12, fontWeight:700, color:r.settled?C.textMuted:iAmReceiver?C.danger:C.text }}>
                                 {SYM[r.currency]||''}{r.amount.toLocaleString()}
@@ -3638,8 +3638,9 @@ function TripDetailScreen({ user, trip, onBack }) {
                   currency: sd.currency||'JPY',
                   note: sd.note||'',
                   createdAt: now,
-                })).filter(r=>r.receiverId!==sd.payerId);
-                if(newRecs.length===0) return;
+                }));
+                // 至少需要一筆非自付的記錄（否則無意義）
+                if(newRecs.filter(r=>r.receiverId!==r.payerId).length===0) return;
                 // 編輯模式：先刪舊的
                 let base = [...splitRecords];
                 if(sd.editingIds && sd.editingIds.length>0) {
