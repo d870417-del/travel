@@ -1596,103 +1596,109 @@ function TripDetailScreen({ user, trip, onBack }) {
   const downloadOverviewPDF = async () => {
     setDownloading('overview');
     const SYM2 = {TWD:'NT$',JPY:'¥',KRW:'₩',USD:'$'};
-    // 費用統計
-    const expTotals = {};
-    walletItems.filter(i=>i.type==='支出').forEach(i=>{ expTotals[i.currency]=(expTotals[i.currency]||0)+Number(i.amount||0); });
-    const expStr = Object.entries(expTotals).map(([c,a])=>`${SYM2[c]||c}${a.toLocaleString()} ${c}`).join('　');
-    // 行程亮點（每天第一筆）
-    const highlights = {};
-    [...itinerary].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(it=>{ if(!highlights[it.date]) highlights[it.date]=it; });
+    // 完整每日行程（每天所有項目，依時間排序）
+    const byDay = {};
+    [...itinerary].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(it=>{
+      const d=it.date||'待安排'; if(!byDay[d]) byDay[d]=[]; byDay[d].push(it);
+    });
+    const dayList = tripDates.filter(d=>d!=='待安排'&&byDay[d]);
+    if(byDay['待安排']) dayList.push('待安排');
     // 美食清單
-    const foods = [...foodItems].slice(0, 30);
-    // 備忘清單（共用備忘錄裡的 checklist 項目）
+    const foods = [...foodItems].slice(0, 40);
+    // 備忘清單
     const checklistMemos = sharedMemos.filter(m=>m.type==='checklist' && (m.items||[]).length>0);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${trip.name} 旅程總覽</title><style>
-      body{font-family:-apple-system,sans-serif;margin:0;padding:0;color:#2A2520;background:#fff}
-      .hero{background:linear-gradient(135deg,#2A8FA5,#3DAD8A);color:#fff;padding:40px 28px 32px}
-      .hero h1{font-size:28px;font-weight:900;margin:12px 0 6px}
-      .hero .sub{font-size:14px;opacity:0.85}
-      .section{padding:22px 28px;border-bottom:1px solid #F0EDE8}
-      .section-title{font-size:13px;font-weight:800;color:#9C9080;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
-      .stat-row{display:flex;gap:20px;flex-wrap:wrap}
-      .stat{background:#F4F0E6;border-radius:12px;padding:14px 18px;flex:1;min-width:120px}
-      .stat-val{font-size:22px;font-weight:900;color:#2A8FA5}
-      .stat-label{font-size:12px;color:#9C9080;margin-top:3px}
-      .member-chips{display:flex;gap:8px;flex-wrap:wrap}
-      .chip{padding:6px 14px;border-radius:20px;background:#E0F3F8;color:#2A8FA5;font-size:13px;font-weight:700}
-      .hl-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #F4F0E6}
-      .hl-date{font-size:12px;color:#9C9080;min-width:50px}
-      .hl-name{font-size:14px;font-weight:700}
-      .exp-box{background:#E6F5EF;border-radius:12px;padding:16px 20px;margin-top:8px}
-      .exp-val{font-size:20px;font-weight:900;color:#3DAD8A}
-      .food-row{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #F4F0E6}
-      .food-tag{font-size:11px;padding:2px 8px;border-radius:5px;background:#F7EAE0;color:#C07850;font-weight:700;white-space:nowrap}
-      .food-name{font-size:14px;font-weight:700}
-      .food-loc{font-size:12px;color:#9C9080}
-      .memo-group{margin-bottom:14px}
-      .memo-title{font-size:14px;font-weight:800;margin-bottom:6px;color:#2A8FA5}
-      .check-row{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px}
-      .check-box{width:15px;height:15px;border:1.5px solid #DDD5C0;border-radius:4px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#3DAD8A}
-      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${trip.name} 旅遊手冊</title><style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&display=swap');
+      *{box-sizing:border-box}
+      body{font-family:'Noto Serif TC','-apple-system',serif;margin:0;padding:0;color:#3A332B;background:#fff;line-height:1.6}
+      .cover{position:relative;height:340px;background:linear-gradient(160deg,#C68B5E 0%,#A8694A 100%);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:40px;overflow:hidden}
+      .cover::after{content:'';position:absolute;inset:16px;border:1.5px solid rgba(255,255,255,0.4);border-radius:4px;pointer-events:none}
+      .cover .emoji{font-size:64px;margin-bottom:16px}
+      .cover .label{font-size:13px;letter-spacing:6px;opacity:0.85;margin-bottom:12px;font-weight:500}
+      .cover h1{font-size:40px;font-weight:900;margin:0 0 16px;letter-spacing:2px}
+      .cover .meta{font-size:15px;opacity:0.95;font-weight:500;letter-spacing:1px}
+      .cover .members{margin-top:20px;font-size:13px;opacity:0.85;letter-spacing:1px}
+      .day-section{padding:28px 36px;break-inside:avoid}
+      .day-header{display:flex;align-items:baseline;gap:14px;margin-bottom:18px;border-bottom:2px solid #C68B5E;padding-bottom:10px}
+      .day-num{font-size:13px;font-weight:700;color:#fff;background:#C68B5E;padding:4px 12px;border-radius:20px;letter-spacing:1px}
+      .day-date{font-size:20px;font-weight:900;color:#3A332B}
+      .timeline{position:relative;padding-left:24px}
+      .timeline::before{content:'';position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#E8D5C0}
+      .stop{position:relative;padding:10px 0 14px;break-inside:avoid}
+      .stop::before{content:'';position:absolute;left:-21px;top:16px;width:11px;height:11px;border-radius:50%;background:#C68B5E;border:2px solid #fff;box-shadow:0 0 0 2px #E8D5C0}
+      .stop-time{font-size:13px;font-weight:700;color:#C68B5E;margin-bottom:2px;letter-spacing:1px}
+      .stop-name{font-size:17px;font-weight:700;color:#3A332B;margin-bottom:3px}
+      .stop-cat{font-size:11px;color:#A89684;font-weight:500}
+      .stop-note{font-size:13px;color:#7A6E5E;margin-top:4px;line-height:1.5}
+      .block{padding:28px 36px;break-inside:avoid}
+      .block-title{font-size:15px;font-weight:900;color:#A8694A;letter-spacing:3px;margin-bottom:18px;text-align:center;position:relative}
+      .block-title::before,.block-title::after{content:'';position:absolute;top:50%;width:40px;height:1px;background:#D8C4AC}
+      .block-title::before{left:50%;margin-left:-90px}
+      .block-title::after{right:50%;margin-right:-90px}
+      .food-grid{display:flex;flex-direction:column;gap:0}
+      .food-item{display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px dotted #E0D2BE}
+      .food-tag{font-size:11px;padding:3px 10px;border-radius:4px;background:#F2E6D6;color:#A8694A;font-weight:700;white-space:nowrap}
+      .food-name{font-size:15px;font-weight:700;color:#3A332B}
+      .food-loc{font-size:12px;color:#A89684}
+      .check-group{margin-bottom:16px}
+      .check-group-title{font-size:14px;font-weight:900;color:#A8694A;margin-bottom:8px}
+      .check-row{display:flex;gap:10px;align-items:center;padding:5px 0;font-size:14px}
+      .check-box{width:16px;height:16px;border:1.5px solid #C68B5E;border-radius:3px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#A8694A;font-weight:900}
+      .footer{text-align:center;padding:30px;color:#A89684;font-size:12px;letter-spacing:2px;border-top:1px solid #E8D5C0}
+      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.day-section,.block{page-break-inside:avoid}}
     </style></head><body>
-    <div class="hero">
-      <div style="font-size:48px">${trip.emoji||'✈️'}</div>
+    <div class="cover">
+      <div class="emoji">${trip.emoji||'✈️'}</div>
+      <div class="label">TRAVEL ITINERARY</div>
       <h1>${trip.name}</h1>
-      <div class="sub">${[trip.destinations,trip.startDate&&trip.endDate?`${trip.startDate} ～ ${trip.endDate}`:''].filter(Boolean).join('　·　')}</div>
+      <div class="meta">${[trip.destinations,trip.startDate&&trip.endDate?`${trip.startDate} ～ ${trip.endDate}`:''].filter(Boolean).join('　|　')}</div>
+      <div class="members">${members.map(m=>m.displayName).join('　·　')}</div>
     </div>
-    <div class="section">
-      <div class="section-title">行程概覽</div>
-      <div class="stat-row">
-        <div class="stat"><div class="stat-val">${tripDates.filter(d=>d!=='待安排').length}</div><div class="stat-label">旅遊天數</div></div>
-        <div class="stat"><div class="stat-val">${itinerary.length}</div><div class="stat-label">行程項目</div></div>
-        <div class="stat"><div class="stat-val">${foodItems.length}</div><div class="stat-label">想吃美食</div></div>
-        <div class="stat"><div class="stat-val">${members.length}</div><div class="stat-label">同行人數</div></div>
+    ${dayList.map((d,di)=>`
+      <div class="day-section">
+        <div class="day-header">
+          <span class="day-num">${d==='待安排'?'待安排':`DAY ${di+1}`}</span>
+          <span class="day-date">${d}</span>
+        </div>
+        <div class="timeline">
+          ${byDay[d].map(it=>`
+            <div class="stop">
+              ${it.time?`<div class="stop-time">${it.time}</div>`:''}
+              <div class="stop-name">${catIcon[it.category]||'📍'} ${it.name}</div>
+              ${it.location?`<div class="stop-cat">📍 ${it.location}</div>`:''}
+              ${it.note?`<div class="stop-note">${it.note}</div>`:''}
+            </div>`).join('')}
+        </div>
+      </div>`).join('')}
+    ${foods.length?`<div class="block">
+      <div class="block-title">想吃美食</div>
+      <div class="food-grid">
+        ${foods.map(f=>`
+          <div class="food-item">
+            ${f.foodType?`<span class="food-tag">${f.foodType}</span>`:''}
+            <div style="flex:1">
+              <div class="food-name">${f.name||''}</div>
+              ${(()=>{ const locs=(f.districts||[f.district]).filter(Boolean); return locs.length?`<div class="food-loc">📍 ${locs.join('、')}</div>`:''; })()}
+            </div>
+          </div>`).join('')}
       </div>
-    </div>
-    <div class="section">
-      <div class="section-title">成員</div>
-      <div class="member-chips">${members.map(m=>`<div class="chip">${m.displayName}</div>`).join('')}</div>
-    </div>
-    <div class="section">
-      <div class="section-title">每日亮點</div>
-      ${tripDates.filter(d=>d!=='待安排'&&highlights[d]).map(d=>`
-        <div class="hl-row">
-          <div class="hl-date">${d}</div>
-          <div>
-            <div class="hl-name">${catIcon[highlights[d].category]||'📌'} ${highlights[d].name}</div>
-            ${highlights[d].note?`<div style="font-size:12px;color:#9C9080;margin-top:2px">${highlights[d].note}</div>`:''}
-          </div>
-        </div>`).join('')}
-    </div>
-    ${expStr?`<div class="section">
-      <div class="section-title">費用總計（共同公費）</div>
-      <div class="exp-box"><div class="exp-val">${expStr}</div><div style="font-size:12px;color:#3DAD8A;margin-top:4px">${walletItems.filter(i=>i.type==='支出').length} 筆消費</div></div>
     </div>`:''}
-    ${foods.length?`<div class="section">
-      <div class="section-title">想吃美食（${foodItems.length}）</div>
-      ${foods.map(f=>`
-        <div class="food-row">
-          ${f.foodType?`<span class="food-tag">${f.foodType}</span>`:''}
-          <div style="flex:1">
-            <div class="food-name">${f.name||''}</div>
-            ${(()=>{ const locs=(f.districts||[f.district]).filter(Boolean); return locs.length?`<div class="food-loc">📍 ${locs.join('、')}</div>`:''; })()}
-          </div>
-        </div>`).join('')}
-    </div>`:''}
-    ${checklistMemos.length?`<div class="section">
-      <div class="section-title">備忘清單</div>
+    ${checklistMemos.length?`<div class="block">
+      <div class="block-title">出發前準備</div>
       ${checklistMemos.map(m=>`
-        <div class="memo-group">
-          <div class="memo-title">${m.title||'清單'}</div>
+        <div class="check-group">
+          <div class="check-group-title">${m.title||'清單'}</div>
           ${(m.items||[]).map(it=>`
             <div class="check-row">
               <span class="check-box">${it.done?'✓':''}</span>
-              <span style="${it.done?'text-decoration:line-through;color:#9C9080':''}">${it.text||''}</span>
+              <span style="${it.done?'text-decoration:line-through;color:#A89684':''}">${it.text||''}</span>
             </div>`).join('')}
         </div>`).join('')}
     </div>`:''}
+    <div class="footer">— ${trip.name}　·　旅遊小助理 —</div>
     </body></html>`;
-    await openPrint(html, `${trip.name}_旅程總覽`);
+    await openPrint(html, `${trip.name}_旅遊手冊`);
     setDownloading(null);
   };
 
@@ -3394,7 +3400,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={sectionLabel}>下載旅程資料</div>
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {[
-              { key:'overview',  emoji:'🗺', label:'旅程總覽 PDF', desc:'封面頁、成員、亮點、費用統計', fn: downloadOverviewPDF },
+              { key:'overview',  emoji:'📖', label:'旅遊手冊 PDF', desc:'完整行程、美食、準備清單，像旅行社 DM', fn: downloadOverviewPDF },
               { key:'itinerary', emoji:'🗓', label:'行程表 Excel', desc:'可編輯後再上傳解析回行程', fn: downloadItineraryExcel },
               { key:'excel',     emoji:'📊', label:'帳務明細 Excel', desc:'公費、個人帳、代墊、購物四個工作表', fn: downloadWalletExcel },
             ].map(({ key, emoji, label, desc, fn }) => (
