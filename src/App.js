@@ -1276,7 +1276,8 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
             setUParsed(items);
             setUSelected(items.map((_,i)=>i));
           } catch(e) {
-            setUError('解析失敗，請確認格式後重試');
+            console.error('Gemini parse error:', e);
+            setUError(`解析失敗：${e?.message||'請確認 API key 是否正確，或稍後再試'}`);
           }
           setULoading(false);
         };
@@ -2362,21 +2363,21 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 💰 共同公費 */}
         <button onClick={()=>setWalletSubTab('shared-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.warm}22`, background:C.warmSoft, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
+          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.blue}22`, background:C.surface, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
           <div style={{ fontSize:30 }}>💰</div>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.warm }}>共同公費</div>
+            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>共同公費</div>
             <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>
               {Object.keys(sharedTotals).length===0 ? '尚無帳目' :
                 Object.entries(sharedTotals).map(([cur,val])=>`${val>=0?'+':''}${SYM[cur]||''}${Math.abs(val).toLocaleString()} ${cur}`).join('・')}
             </div>
           </div>
-          <div style={{ color:C.warm, fontSize:18 }}>›</div>
+          <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
         </button>
 
         {/* 👤 個人記帳 */}
         <button onClick={()=>setWalletSubTab('personal-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.blue}22`, background:C.blueSoft, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
+          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.blue}22`, background:C.surface, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
           <div style={{ fontSize:30 }}>👤</div>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>個人記帳</div>
@@ -2385,22 +2386,22 @@ function TripDetailScreen({ user, trip, onBack }) {
                 Object.entries(personalTotals).map(([cur,val])=>`${val>=0?'+':''}${SYM[cur]||''}${Math.abs(val).toLocaleString()} ${cur}`).join('・')}
             </div>
           </div>
-          <div style={{ color:C.blue, fontSize:18 }}>›</div>
+          <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
         </button>
 
         {/* 🔄 代墊結算 */}
         <button onClick={()=>setWalletSubTab('split-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.green}22`, background:C.greenSoft, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
+          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.blue}22`, background:C.surface, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
           <div style={{ fontSize:30 }}>🔄</div>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.green }}>代墊結算</div>
+            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>代墊結算</div>
             <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>
               {unsettled.length===0 ? '目前沒有未結清的代墊' :
                 myTransfers.length>0 ? `⚠️ 有 ${myTransfers.length} 筆與我有關` :
                 `${unsettled.length} 筆未結清`}
             </div>
           </div>
-          <div style={{ color:C.green, fontSize:18 }}>›</div>
+          <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
         </button>
 
         {/* 匯率設定 */}
