@@ -4440,3 +4440,4 @@ export default function App() {
   if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} /></ErrorBoundary>;
   return <TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />;
 }
+
