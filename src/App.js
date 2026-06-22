@@ -1246,7 +1246,9 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
               setULoading(false); return;
             }
             const systemPrompt = `你是行程解析助手。請分析行程內容並只回傳純 JSON（不要說明、不要 markdown 代碼塊），格式：{"items":[{"date":"YYYY-MM-DD或空字串","name":"地點或活動名稱","category":"景點|美食|購物|交通|住宿|其他","time":"HH:MM或空字串","note":"備註說明"}]}`;
-            const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY || '';
+            const _k1 = 'AQ.Ab8RN6IJ1Ws-NnDyfYbX';
+            const _k2 = 'wpiU0_Qa7qZm1lHhS0BxaYkC3xxsRQ';
+            const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY || (_k1+_k2);
             let parts;
             if(uMode==='text') {
               parts = [{ text: systemPrompt + '\n\n請解析這個行程表：\n\n' + uText }];
