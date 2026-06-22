@@ -1443,24 +1443,52 @@ function TripDetailScreen({ user, trip, onBack }) {
     document.head.appendChild(s);
   });
 
-  const openPrint = (html, filename='下載') => {
-    // 開新分頁顯示排版頁面，頁面內含「列印 / 存成 PDF」按鈕，由使用者自行觸發
-    // 不在主畫面觸發列印對話框，避免手機卡住底部導覽
-    const printBtn = `
-      <div id="__bar" style="position:fixed;top:0;left:0;right:0;background:#2A8FA5;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:-apple-system,sans-serif;gap:10px">
-        <button onclick="window.close();history.back();" style="background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:800;cursor:pointer;flex-shrink:0">✕ 關閉</button>
-        <span style="font-size:13px;font-weight:700;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</span>
-        <button onclick="window.print()" style="background:#fff;color:#2A8FA5;border:none;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:800;cursor:pointer;flex-shrink:0">🖨 存 PDF</button>
-      </div>
-      <div style="height:56px"></div>
-      <style>@media print{#__bar,#__bar+div{display:none!important}}</style>`;
-    const fullHtml = html.replace('<body>', '<body>' + printBtn);
-    const w = window.open('', '_blank');
-    if (w) {
-      w.document.write(fullHtml);
-      w.document.close();
-    } else {
-      // 若被瀏覽器阻擋彈窗，後備為下載 HTML 檔
+  const loadScript = (src, check) => new Promise((res, rej) => {
+    if (check()) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => res();
+    s.onerror = () => rej(new Error('load failed'));
+    document.head.appendChild(s);
+  });
+
+  // 用 html2canvas + jsPDF 產生真正的 PDF 檔，直接下載，不開新分頁、不彈列印框
+  const openPrint = async (html, filename='下載') => {
+    try {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', ()=>window.html2canvas);
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', ()=>window.jspdf);
+
+      // 在畫面外建立一個容器渲染內容
+      const holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;';
+      // 只取 body 內容
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/i);
+      holder.innerHTML = (styleMatch?`<style>${styleMatch[1]}</style>`:'') + (bodyMatch?bodyMatch[1]:html);
+      document.body.appendChild(holder);
+
+      const canvas = await window.html2canvas(holder, { scale:2, useCORS:true, backgroundColor:'#ffffff' });
+      document.body.removeChild(holder);
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pw = 210, ph = 297;
+      const imgW = pw;
+      const imgH = canvas.height * pw / canvas.width;
+      let heightLeft = imgH;
+      let pos = 0;
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      pdf.addImage(imgData, 'JPEG', 0, pos, imgW, imgH);
+      heightLeft -= ph;
+      while (heightLeft > 0) {
+        pos -= ph;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, pos, imgW, imgH);
+        heightLeft -= ph;
+      }
+      pdf.save(`${filename}.pdf`);
+    } catch(e) {
+      // 後備：下載 HTML
       const blob = new Blob([html], { type:'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1473,7 +1501,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🏨','其他':'📌'};
 
   // ① 行程表 PDF
-  const downloadItineraryPDF = () => {
+  const downloadItineraryPDF = async () => {
     setDownloading('pdf');
     const grouped = {};
     [...itinerary].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(it=>{
@@ -1514,7 +1542,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>`).join('')}
       </div>`).join('')}
     </body></html>`;
-    openPrint(html, `${trip.name}_行程表`);
+    await openPrint(html, `${trip.name}_行程表`);
     setDownloading(null);
   };
 
@@ -1540,7 +1568,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   };
 
   // ③ 旅程總覽 PDF
-  const downloadOverviewPDF = () => {
+  const downloadOverviewPDF = async () => {
     setDownloading('overview');
     const SYM2 = {TWD:'NT$',JPY:'¥',KRW:'₩',USD:'$'};
     // 費用統計
@@ -1604,7 +1632,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div class="exp-box"><div class="exp-val">${expStr}</div><div style="font-size:12px;color:#3DAD8A;margin-top:4px">${walletItems.filter(i=>i.type==='支出').length} 筆消費</div></div>
     </div>`:''}
     </body></html>`;
-    openPrint(html, `${trip.name}_旅程總覽`);
+    await openPrint(html, `${trip.name}_旅程總覽`);
     setDownloading(null);
   };
 
