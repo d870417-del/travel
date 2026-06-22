@@ -2362,19 +2362,19 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 💰 共同公費 */}
         <button onClick={()=>setWalletSubTab('shared-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.purple}22`, background:C.purpleSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
+          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.warm}22`, background:C.warmSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.purple }}>💰 共同公費</div>
-            <div style={{ fontSize:18, color:C.purple }}>›</div>
+            <div style={{ fontSize:15, fontWeight:800, color:C.warm }}>💰 共同公費</div>
+            <div style={{ fontSize:18, color:C.warm }}>›</div>
           </div>
           {Object.keys(sharedTotals).length===0 ? (
             <div style={{ fontSize:12, color:C.textMuted }}>尚無帳目，點此新增</div>
           ) : (
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
               {Object.entries(sharedTotals).map(([cur,val])=>(
-                <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?(CurrencyBg[cur]||'#F0FFF4'):'#FFF0F0', border:`1px solid ${val>=0?(CurrencyC[cur]||C.green):C.danger}33` }}>
+                <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?'#F0EDE8':'#FDECEA', border:`1px solid ${val>=0?C.warm:C.danger}33` }}>
                   <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?C.warm:C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
                 </div>
               ))}
             </div>
@@ -2383,19 +2383,19 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 👤 個人記帳 */}
         <button onClick={()=>setWalletSubTab('personal-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.blue}22`, background:C.blueSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
+          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.text}22`, background:'#F0EDE8', textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>👤 個人記帳</div>
-            <div style={{ fontSize:18, color:C.blue }}>›</div>
+            <div style={{ fontSize:15, fontWeight:800, color:C.text }}>👤 個人記帳</div>
+            <div style={{ fontSize:18, color:C.textMuted }}>›</div>
           </div>
           {Object.keys(personalTotals).length===0 ? (
             <div style={{ fontSize:12, color:C.textMuted }}>尚無帳目，點此新增</div>
           ) : (
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
               {Object.entries(personalTotals).map(([cur,val])=>(
-                <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?(CurrencyBg[cur]||'#F0FFF4'):'#FFF0F0', border:`1px solid ${val>=0?(CurrencyC[cur]||C.green):C.danger}33` }}>
+                <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?'#F0EDE8':'#FDECEA', border:`1px solid ${val>=0?C.warm:C.danger}33` }}>
                   <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?(CurrencyC[cur]||C.green):C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?C.warm:C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
                 </div>
               ))}
             </div>
@@ -2404,10 +2404,10 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 🔄 代墊結算 */}
         <button onClick={()=>setWalletSubTab('split-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.green}22`, background:C.greenSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
+          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.textMuted}22`, background:C.surface, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.green }}>🔄 代墊結算</div>
-            <div style={{ fontSize:18, color:C.green }}>›</div>
+            <div style={{ fontSize:15, fontWeight:800, color:C.text }}>🔄 代墊結算</div>
+            <div style={{ fontSize:18, color:C.textMuted }}>›</div>
           </div>
           {unsettled.length===0 ? (
             <div style={{ fontSize:12, color:C.textMuted }}>目前沒有未結清的代墊</div>
@@ -2820,7 +2820,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                                   } else {
                                     setSettleCurrencyPrompt({ amount:r.amount, currency:r.currency, twdAmount:toTWD(r.amount,r.currency), onChoose:(a,c)=>doMarkPaid(a,c) });
                                   }
-                                }} style={{ fontSize:11, color:C.blue, padding:'3px 8px', borderRadius:6, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, cursor:'pointer', fontWeight:600, flexShrink:0 }}>
+                                }} style={{ fontSize:11, color:C.warm, padding:'3px 8px', borderRadius:6, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, cursor:'pointer', fontWeight:600, flexShrink:0 }}>
                                   標記已還
                                 </button>
                               ) : null}
@@ -2838,13 +2838,13 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 新增代墊按鈕 */}
         <button onClick={() => setSplitModal({open:true, data:{payerId:user.uid, receiverIds:[], amount:'', currency:(tripCurrencies||['JPY'])[0]||'JPY', note:''}})}
-          style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.green},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${C.green}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+          style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.warm},${C.text})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${C.warm}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
       </div>
     );
 
     // ── 明細頁（共用或個人）──
-    const pageColor = isShared ? C.purple : C.blue;
-    const pageBg = isShared ? C.purpleSoft : C.blueSoft;
+    const pageColor = C.warm;
+    const pageBg = C.warmSoft;
     const pageTitle = isShared ? '共同公費' : '個人記帳';
 
     return (
