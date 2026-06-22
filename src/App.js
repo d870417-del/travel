@@ -4517,7 +4517,8 @@ export default function App() {
   const [authUser, setAuthUser] = useState(undefined);
   const [currentTrip, setCurrentTrip] = useState(null);
   const [pendingInvite, setPendingInvite] = useState(null);
-  const [autoJoining, setAutoJoining] = useState(false);
+  const [inviteTrip, setInviteTrip] = useState(null); // 找到的旅程，等使用者確認
+  const [joining, setJoining] = useState(false);
 
   // 讀取網址的邀請碼 ?invite=XXXXXX
   useEffect(() => {
@@ -4536,40 +4537,77 @@ export default function App() {
     return unsub;
   }, []);
 
-  // 登入後若有待處理的邀請碼，自動加入
+  // 登入後若有待處理的邀請碼，先抓旅程資訊，跳確認彈窗
   useEffect(() => {
-    if (!authUser || !pendingInvite || currentTrip) return;
+    if (!authUser || !pendingInvite || currentTrip || inviteTrip) return;
     let cancelled = false;
     (async () => {
-      setAutoJoining(true);
       try {
         const q = query(collection(db, "trips"), where("inviteCode", "==", pendingInvite));
         const snap = await getDocs(q);
         if (!snap.empty && !cancelled) {
           const tripDoc = snap.docs[0];
-          const tripId = tripDoc.id;
-          const memberDoc = await getDoc(doc(db, "tripMembers", `${tripId}_${authUser.uid}`));
-          if (!memberDoc.exists()) {
-            await setDoc(doc(db, "tripMembers", `${tripId}_${authUser.uid}`), {
-              tripId, uid: authUser.uid,
-              displayName: authUser.displayName || authUser.email,
-              role: "member", joinedAt: serverTimestamp(),
-            });
+          // 檢查是否已是成員
+          const memberDoc = await getDoc(doc(db, "tripMembers", `${tripDoc.id}_${authUser.uid}`));
+          if (memberDoc.exists()) {
+            // 已加入，直接進入
+            if(!cancelled) setCurrentTrip({ id: tripDoc.id, ...tripDoc.data() });
+            setPendingInvite(null);
+            try { window.history.replaceState({}, '', window.location.pathname); } catch(e) {}
+          } else if(!cancelled) {
+            setInviteTrip({ id: tripDoc.id, ...tripDoc.data() });
           }
-          if (!cancelled) setCurrentTrip({ id: tripId, ...tripDoc.data() });
+        } else {
+          setPendingInvite(null);
         }
-      } catch(e) {}
-      // 清掉網址參數，避免重複觸發
-      try { window.history.replaceState({}, '', window.location.pathname); } catch(e) {}
-      setPendingInvite(null);
-      setAutoJoining(false);
+      } catch(e) { setPendingInvite(null); }
     })();
     return () => { cancelled = true; };
-  }, [authUser, pendingInvite, currentTrip]);
+  }, [authUser, pendingInvite, currentTrip, inviteTrip]);
+
+  const confirmJoin = async () => {
+    if (!inviteTrip || !authUser) return;
+    setJoining(true);
+    try {
+      const memberDoc = await getDoc(doc(db, "tripMembers", `${inviteTrip.id}_${authUser.uid}`));
+      if (!memberDoc.exists()) {
+        await setDoc(doc(db, "tripMembers", `${inviteTrip.id}_${authUser.uid}`), {
+          tripId: inviteTrip.id, uid: authUser.uid,
+          displayName: authUser.displayName || authUser.email,
+          role: "member", joinedAt: serverTimestamp(),
+        });
+      }
+      setCurrentTrip(inviteTrip);
+    } catch(e) {}
+    try { window.history.replaceState({}, '', window.location.pathname); } catch(e) {}
+    setInviteTrip(null); setPendingInvite(null); setJoining(false);
+  };
+
+  const cancelJoin = () => {
+    try { window.history.replaceState({}, '', window.location.pathname); } catch(e) {}
+    setInviteTrip(null); setPendingInvite(null);
+  };
 
   if (authUser === undefined) return <LoadingScreen />;
   if (!authUser) return <AuthScreen />;
-  if (autoJoining) return <LoadingScreen />;
-  if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} /></ErrorBoundary>;
-  return <TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />;
+
+  const inviteDialog = inviteTrip && (
+    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div onClick={cancelJoin} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+      <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:340, textAlign:'center', padding:28 }}>
+        <div style={{ fontSize:48, marginBottom:12 }}>{inviteTrip.emoji||'✈️'}</div>
+        <div style={{ fontSize:13, color:C.textMuted, marginBottom:4 }}>朋友邀請你加入旅程</div>
+        <div style={{ fontSize:20, fontWeight:900, marginBottom:6 }}>{inviteTrip.name}</div>
+        {inviteTrip.destinations && <div style={{ fontSize:13, color:C.textMuted, marginBottom:4 }}>📍 {inviteTrip.destinations}</div>}
+        {inviteTrip.startDate && inviteTrip.endDate && <div style={{ fontSize:13, color:C.textMuted, marginBottom:20 }}>{inviteTrip.startDate} ～ {inviteTrip.endDate}</div>}
+        <div style={{ display:'flex', gap:10, marginTop:14 }}>
+          <button onClick={cancelJoin} disabled={joining} style={{ flex:1, padding:13, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:14, fontWeight:700, cursor:'pointer' }}>先不要</button>
+          <button onClick={confirmJoin} disabled={joining} style={{ flex:2, padding:13, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer', opacity:joining?0.6:1 }}>{joining?'加入中...':'加入旅程'}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} />{inviteDialog}</ErrorBoundary>;
+  return <>{<TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />}{inviteDialog}</>;
 }
