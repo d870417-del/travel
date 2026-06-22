@@ -1666,7 +1666,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       const dayLodge = lodgings.filter(l=>{ if(!l.checkIn||!l.checkOut)return false; const ci=tripDates.indexOf(l.checkIn),co=tripDates.indexOf(l.checkOut); if(ci<0||co<0)return false; return dIdx>=ci&&dIdx<=co; });
       const travelLine = [
         ...dayFlights.map(t=>`${t.type==='flight'?'✈️':'🚄'} ${t.label||''} ${t.time||''} ${t.from?`${t.from}→${t.to}`:''} ${t.code||''}`.trim()),
-        ...dayLodge.map(l=>`🏨 ${l.name}${l.checkIn===d?'（入住）':l.checkOut===d?'（退房）':''}`),
+        ...dayLodge.map(l=>`🏨 ${l.mapUrl?`<a href="${l.mapUrl}" style="color:#6B5D4A">${l.name}</a>`:l.name}${l.checkIn===d?'（入住）':l.checkOut===d?'（退房）':''}`),
       ];
       return `
       <div class="day-section">
@@ -2165,6 +2165,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                     <div style={{ fontSize:13, fontWeight:700 }}>{l.name} {l.checkIn===selectedDate&&<span style={{ fontSize:11, color:C.warm }}>（入住）</span>}</div>
                     {l.code&&<div style={{ fontSize:12, color:C.textMuted }}>訂房編號 {l.code}</div>}
                   </div>
+                  {l.mapUrl&&<a href={l.mapUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:C.warm, fontWeight:700, textDecoration:'none', padding:'4px 8px', borderRadius:6, border:`1px solid ${C.warm}44`, backgroundColor:'#fff' }}>📍 地圖</a>}
                 </div>
               ))}
               {checkoutToday.map(l=>(
@@ -4626,6 +4627,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       <div style={{ fontSize:14, fontWeight:700 }}>{l.name}</div>
                       <div style={{ fontSize:12, color:C.textMuted }}>{l.checkIn} ～ {l.checkOut} {l.code?`· ${l.code}`:''}</div>
                     </div>
+                    {l.mapUrl&&<a href={l.mapUrl} target="_blank" rel="noreferrer" style={{ padding:'4px 8px', border:`1px solid ${C.warm}44`, borderRadius:8, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, textDecoration:'none' }}>📍</a>}
                     <button onClick={()=>setLodgingModal({open:true,data:l})} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
                     <button onClick={()=>{ const n=lodgings.filter(x=>x.id!==l.id); saveLodgings(n); }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:C.bg, color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                   </div>
@@ -4656,10 +4658,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                   <option value="">選擇日期</option>
                   {tripDates.filter(d=>d!=='待安排').map(d=><option key={d} value={d}>{d}</option>)}
                 </select>
-                <select value={cur.time||''} onChange={e=>set('time',e.target.value)} style={{ ...gs.input, flex:1, appearance:'none' }}>
-                  <option value="">選擇時間</option>
-                  {Array.from({length:48}).map((_,i)=>{ const h=String(Math.floor(i/2)).padStart(2,'0'); const m=i%2?'30':'00'; const t=`${h}:${m}`; return <option key={t} value={t}>{t}</option>; })}
-                </select>
+                <input type="time" value={cur.time||''} onChange={e=>set('time',e.target.value)} style={{ ...gs.input, flex:1 }}/>
               </div>
               <div style={{ display:'flex', gap:8, marginBottom:10 }}>
                 <input placeholder="出發地" value={cur.from||''} onChange={e=>set('from',e.target.value)} style={{ ...gs.input, flex:1 }}/>
@@ -4707,7 +4706,8 @@ function TripDetailScreen({ user, trip, onBack }) {
                   </select>
                 </div>
               </div>
-              <input placeholder="訂房編號（選填）" value={cur.code||''} onChange={e=>set('code',e.target.value)} style={{ ...gs.input, marginBottom:18 }}/>
+              <input placeholder="訂房編號（選填）" value={cur.code||''} onChange={e=>set('code',e.target.value)} style={{ ...gs.input, marginBottom:10 }}/>
+              <input placeholder="Google Maps 連結（選填）" value={cur.mapUrl||''} onChange={e=>set('mapUrl',e.target.value)} style={{ ...gs.input, marginBottom:18 }}/>
               <div style={{ display:'flex', gap:10 }}>
                 <button onClick={()=>setLodgingModal({open:false,data:null})} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontWeight:700, fontSize:14, cursor:'pointer' }}>取消</button>
                 <button onClick={()=>{
