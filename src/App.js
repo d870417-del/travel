@@ -1447,9 +1447,10 @@ function TripDetailScreen({ user, trip, onBack }) {
     // 開新分頁顯示排版頁面，頁面內含「列印 / 存成 PDF」按鈕，由使用者自行觸發
     // 不在主畫面觸發列印對話框，避免手機卡住底部導覽
     const printBtn = `
-      <div id="__bar" style="position:fixed;top:0;left:0;right:0;background:#2A8FA5;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:-apple-system,sans-serif">
-        <span style="font-size:14px;font-weight:700">${filename}</span>
-        <button onclick="window.print()" style="background:#fff;color:#2A8FA5;border:none;border-radius:8px;padding:8px 18px;font-size:14px;font-weight:800;cursor:pointer">🖨 列印 / 存成 PDF</button>
+      <div id="__bar" style="position:fixed;top:0;left:0;right:0;background:#2A8FA5;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:-apple-system,sans-serif;gap:10px">
+        <button onclick="window.close();history.back();" style="background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:800;cursor:pointer;flex-shrink:0">✕ 關閉</button>
+        <span style="font-size:13px;font-weight:700;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</span>
+        <button onclick="window.print()" style="background:#fff;color:#2A8FA5;border:none;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:800;cursor:pointer;flex-shrink:0">🖨 存 PDF</button>
       </div>
       <div style="height:56px"></div>
       <style>@media print{#__bar,#__bar+div{display:none!important}}</style>`;
@@ -4440,4 +4441,3 @@ export default function App() {
   if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} /></ErrorBoundary>;
   return <TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />;
 }
-
