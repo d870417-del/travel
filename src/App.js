@@ -1262,15 +1262,19 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
                 { text: systemPrompt + '\n\n請解析這份行程表文件，萃取所有行程項目。' }
               ];
             }
-            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`, {
               method:'POST',
-              headers:{'Content-Type':'application/json'},
+              headers:{
+                'Content-Type':'application/json',
+                'x-goog-api-key': GEMINI_KEY
+              },
               body: JSON.stringify({
                 contents:[{ parts }],
                 generationConfig:{ maxOutputTokens:4096, temperature:0.1 }
               })
             });
             const data = await resp.json();
+            if (data.error) { throw new Error(data.error.message || 'API 錯誤'); }
             const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
             let clean = raw.replace(/```json|```/g,'').trim();
             // 修復被截斷的 JSON：補上缺少的結尾
