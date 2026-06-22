@@ -1196,17 +1196,55 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
         const handleFile = (e) => {
           const f = e.target.files[0]; if(!f) return;
           setUFile(f); setUError('');
-          const reader = new FileReader();
-          reader.onload = ev => {
-            setUFileData(ev.target.result.split(',')[1]);
-            setUFileType(f.type.startsWith('image/') ? 'image' : 'pdf');
-          };
-          reader.readAsDataURL(f);
+          const name = (f.name||'').toLowerCase();
+          const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv');
+          if (isExcel) {
+            setUFileType('excel');
+            const reader = new FileReader();
+            reader.onload = ev => setUFileData(ev.target.result); // ArrayBuffer
+            reader.readAsArrayBuffer(f);
+          } else {
+            const reader = new FileReader();
+            reader.onload = ev => {
+              setUFileData(ev.target.result.split(',')[1]);
+              setUFileType(f.type.startsWith('image/') ? 'image' : 'pdf');
+            };
+            reader.readAsDataURL(f);
+          }
         };
+
+        const loadXLSXlib = () => new Promise(res => {
+          if (window.XLSX) { res(window.XLSX); return; }
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+          s.onload = () => res(window.XLSX);
+          document.head.appendChild(s);
+        });
 
         const handleParse = async () => {
           setULoading(true); setUError('');
           try {
+            // Excel：直接讀取，不需 AI（格式固定）
+            if (uMode==='file' && uFileType==='excel') {
+              const XLSX = await loadXLSXlib();
+              const wb = XLSX.read(uFileData, { type:'array' });
+              const ws = wb.Sheets[wb.SheetNames[0]];
+              const rows = XLSX.utils.sheet_to_json(ws, { header:1 });
+              const header = (rows[0]||[]).map(h=>String(h||'').trim());
+              const col = name => header.findIndex(h=>h.includes(name));
+              const ci = { date:col('日期'), time:col('時間'), cat:col('類別'), name:col('名稱'), loc:col('地點'), note:col('備註') };
+              const items = rows.slice(1).filter(r=>r&&(r[ci.name]||r[ci.date])).map(r=>({
+                date: ci.date>=0 ? String(r[ci.date]||'').trim() : '',
+                time: ci.time>=0 ? String(r[ci.time]||'').trim() : '',
+                category: ci.cat>=0 ? String(r[ci.cat]||'景點').trim() : '景點',
+                name: ci.name>=0 ? String(r[ci.name]||'').trim() : '',
+                location: ci.loc>=0 ? String(r[ci.loc]||'').trim() : '',
+                note: ci.note>=0 ? String(r[ci.note]||'').trim() : '',
+              }));
+              if(items.length===0){ setUError('Excel 沒有可解析的資料'); setULoading(false); return; }
+              setUParsed(items); setUSelected(items.map((_,i)=>i));
+              setULoading(false); return;
+            }
             const systemPrompt = `你是行程解析助手。請分析行程內容並只回傳純 JSON（不要說明、不要 markdown 代碼塊），格式：{"items":[{"date":"YYYY-MM-DD或空字串","name":"地點或活動名稱","category":"景點|美食|購物|交通|住宿|其他","time":"HH:MM或空字串","note":"備註說明"}]}`;
             let content;
             if(uMode==='text') {
@@ -1278,16 +1316,16 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
                 </div>
                 {uMode==='file' ? (
                   <>
-                    <input type="file" accept="image/*,.pdf" onChange={handleFile} style={{ display:'none' }} id="iti-up"/>
+                    <input type="file" accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={handleFile} style={{ display:'none' }} id="iti-up"/>
                     <label htmlFor="iti-up" style={{ display:'block', border:`2px dashed ${uFile?C.blue:C.border}`, borderRadius:16, padding:'36px 20px', textAlign:'center', cursor:'pointer', backgroundColor:uFile?C.blueSoft:'transparent' }}>
                       {uFile ? (<>
-                        <div style={{ fontSize:36, marginBottom:8 }}>{uFileType==='image'?'🖼️':'📄'}</div>
+                        <div style={{ fontSize:36, marginBottom:8 }}>{uFileType==='image'?'🖼️':uFileType==='excel'?'📊':'📄'}</div>
                         <div style={{ fontSize:14, fontWeight:700, color:C.blue }}>{uFile.name}</div>
-                        <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>點擊重新選擇</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>{uFileType==='excel'?'Excel 行程表，可直接解析':'點擊重新選擇'}</div>
                       </>) : (<>
                         <div style={{ fontSize:40, marginBottom:8 }}>📂</div>
-                        <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>點擊上傳圖片或 PDF</div>
-                        <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>截圖、拍照、PDF 都可以</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>點擊上傳檔案</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>Excel 行程表、截圖、拍照、PDF 都可以</div>
                       </>)}
                     </label>
                   </>
@@ -1299,7 +1337,7 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
                 {uError && <div style={{ color:C.danger, fontSize:13, marginTop:10, textAlign:'center' }}>{uError}</div>}
                 <button onClick={handleParse} disabled={uLoading||(uMode==='file'?!uFileData:!uText.trim())}
                   style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:700, cursor:'pointer', opacity:(uLoading||(uMode==='file'?!uFileData:!uText.trim()))?0.5:1 }}>
-                  {uLoading ? '⏳ AI 解析中...' : '✨ 開始解析'}
+                  {uLoading ? '⏳ 解析中...' : (uFileType==='excel' ? '📊 讀取 Excel' : '✨ 開始解析')}
                 </button>
               </>) : (<>
                 <div style={{ fontSize:13, color:C.textMuted, marginBottom:12 }}>
@@ -1501,48 +1539,24 @@ function TripDetailScreen({ user, trip, onBack }) {
   const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🏨','其他':'📌'};
 
   // ① 行程表 PDF
-  const downloadItineraryPDF = async () => {
-    setDownloading('pdf');
-    const grouped = {};
-    [...itinerary].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(it=>{
-      const d = it.date||'待安排'; if(!grouped[d]) grouped[d]=[];
-      grouped[d].push(it);
+  const downloadItineraryExcel = async () => {
+    setDownloading('itinerary');
+    const XLSX = await loadXLSX();
+    const wb = XLSX.utils.book_new();
+    const sorted = [...itinerary].sort((a,b)=>{
+      const da=(a.date||'待安排'), db=(b.date||'待安排');
+      if(da!==db) return da.localeCompare(db);
+      return (a.time||'').localeCompare(b.time||'');
     });
-    const days = [...tripDates].filter(d=>grouped[d]);
-    if(grouped['待安排']) days.push('待安排');
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${trip.name} 行程表</title><style>
-      body{font-family:-apple-system,sans-serif;margin:0;padding:24px;color:#2A2520;background:#fff}
-      h1{font-size:22px;font-weight:900;margin-bottom:4px}
-      .sub{color:#9C9080;font-size:13px;margin-bottom:28px}
-      .day{break-inside:avoid;margin-bottom:28px}
-      .day-title{font-size:16px;font-weight:800;color:#2A8FA5;border-bottom:2px solid #E0F3F8;padding-bottom:6px;margin-bottom:12px}
-      .item{display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #F0EDE8}
-      .time{font-size:12px;color:#9C9080;min-width:40px;padding-top:2px}
-      .cat{font-size:11px;padding:2px 7px;border-radius:5px;background:#E0F3F8;color:#2A8FA5;font-weight:700;white-space:nowrap}
-      .name{font-size:14px;font-weight:700;margin-bottom:3px}
-      .note{font-size:12px;color:#9C9080}
-      @media print{body{padding:12px}}
-    </style></head><body>
-    <h1>${trip.emoji||'✈️'} ${trip.name}</h1>
-    <div class="sub">${trip.destinations||''} ${trip.startDate&&trip.endDate?`· ${trip.startDate} ~ ${trip.endDate}`:''} · ${members.length} 人同行</div>
-    ${days.map(d=>`
-      <div class="day">
-        <div class="day-title">📅 ${d}</div>
-        ${(grouped[d]||[]).map(it=>`
-          <div class="item">
-            <div class="time">${it.time||''}</div>
-            <div>
-              <div style="display:flex;gap:6px;align-items:center;margin-bottom:3px">
-                <span class="cat">${catIcon[it.category]||'📌'} ${it.category||'其他'}</span>
-                <span class="name">${it.name}</span>
-              </div>
-              ${it.location?`<div class="note">📍 ${it.location}</div>`:''}
-              ${it.note?`<div class="note">${it.note}</div>`:''}
-            </div>
-          </div>`).join('')}
-      </div>`).join('')}
-    </body></html>`;
-    await openPrint(html, `${trip.name}_行程表`);
+    // 欄位順序對應解析格式：日期、時間、類別、名稱、地點、備註
+    const rows = [
+      ['日期','時間','類別','名稱','地點','備註'],
+      ...sorted.map(it=>[ it.date||'', it.time||'', it.category||'景點', it.name||'', it.location||'', it.note||'' ])
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:12},{wch:8},{wch:8},{wch:24},{wch:24},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, ws, '行程表');
+    XLSX.writeFile(wb, `${trip.name}_行程表.xlsx`);
     setDownloading(null);
   };
 
@@ -3349,9 +3363,9 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={sectionLabel}>下載旅程資料</div>
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {[
-              { key:'pdf',      emoji:'🗓', label:'行程表 PDF', desc:'每天行程一覽，可列印帶著走', fn: downloadItineraryPDF },
-              { key:'overview', emoji:'🗺', label:'旅程總覽 PDF', desc:'封面頁、成員、亮點、費用統計', fn: downloadOverviewPDF },
-              { key:'excel',    emoji:'📊', label:'帳務明細 Excel', desc:'公費、個人帳、代墊、購物四個工作表', fn: downloadWalletExcel },
+              { key:'overview',  emoji:'🗺', label:'旅程總覽 PDF', desc:'封面頁、成員、亮點、費用統計', fn: downloadOverviewPDF },
+              { key:'itinerary', emoji:'🗓', label:'行程表 Excel', desc:'可編輯後再上傳解析回行程', fn: downloadItineraryExcel },
+              { key:'excel',     emoji:'📊', label:'帳務明細 Excel', desc:'公費、個人帳、代墊、購物四個工作表', fn: downloadWalletExcel },
             ].map(({ key, emoji, label, desc, fn }) => (
               <button key={key} onClick={fn} disabled={!!downloading}
                 style={{ ...rowCard, background:downloading===key?C.blueSoft:C.surface, opacity:downloading&&downloading!==key?0.5:1 }}>
