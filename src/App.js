@@ -1246,31 +1246,28 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
               setULoading(false); return;
             }
             const systemPrompt = `你是行程解析助手。請分析行程內容並只回傳純 JSON（不要說明、不要 markdown 代碼塊），格式：{"items":[{"date":"YYYY-MM-DD或空字串","name":"地點或活動名稱","category":"景點|美食|購物|交通|住宿|其他","time":"HH:MM或空字串","note":"備註說明"}]}`;
-            let content;
+            const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY || '';
+            let parts;
             if(uMode==='text') {
-              content = `請解析這個行程表：\n\n${uText}`;
+              parts = [{ text: systemPrompt + '\n\n請解析這個行程表：\n\n' + uText }];
             } else if(uFileType==='image') {
-              content = [
-                { type:'image', source:{ type:'base64', media_type:uFile.type, data:uFileData } },
-                { type:'text', text:'請解析這張行程表圖片，萃取所有行程項目。' }
+              parts = [
+                { inline_data:{ mime_type:uFile.type, data:uFileData } },
+                { text: systemPrompt + '\n\n請解析這張行程表圖片，萃取所有行程項目。' }
               ];
             } else {
-              content = [
-                { type:'document', source:{ type:'base64', media_type:'application/pdf', data:uFileData } },
-                { type:'text', text:'請解析這份行程表文件，萃取所有行程項目。' }
+              parts = [
+                { inline_data:{ mime_type:'application/pdf', data:uFileData } },
+                { text: systemPrompt + '\n\n請解析這份行程表文件，萃取所有行程項目。' }
               ];
             }
-            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
               method:'POST',
               headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({
-                model:'claude-sonnet-4-6', max_tokens:2000,
-                system: systemPrompt,
-                messages:[{ role:'user', content }]
-              })
+              body: JSON.stringify({ contents:[{ parts }] })
             });
             const data = await resp.json();
-            const raw = (data.content||[]).map(c=>c.text||'').join('');
+            const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
             const clean = raw.replace(/```json|```/g,'').trim();
             const parsed = JSON.parse(clean);
             const items = parsed.items||[];
