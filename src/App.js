@@ -1262,7 +1262,7 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
                 { text: systemPrompt + '\n\n請解析這份行程表文件，萃取所有行程項目。' }
               ];
             }
-            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`, {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`, {
               method:'POST',
               headers:{
                 'Content-Type':'application/json',
