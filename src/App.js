@@ -1928,6 +1928,17 @@ function TripDetailScreen({ user, trip, onBack }) {
     const ni=itinerary.filter(it=>it.id!==id); setItinerary(ni); saveItinerary(ni,tripDates); setConfirmDel(null);
   }
   function copyCode() { navigator.clipboard.writeText(trip.inviteCode); setCopied(true); setTimeout(()=>setCopied(false),2000); }
+  const [linkCopied, setLinkCopied] = useState(false);
+  function copyLink() {
+    const url = `${window.location.origin}${window.location.pathname}?invite=${trip.inviteCode}`;
+    const shareText = `邀請你加入「${trip.name}」旅程 ✈️\n點連結直接加入：\n${url}`;
+    if (navigator.share) {
+      navigator.share({ title: `加入「${trip.name}」`, text: shareText, url }).catch(()=>{});
+    } else {
+      navigator.clipboard.writeText(url);
+      setLinkCopied(true); setTimeout(()=>setLinkCopied(false),2000);
+    }
+  }
 
   const getCat=(cat)=>{
     const map={'景點':{bg:C.greenSoft,color:C.green,border:'#B8E8D8'},'美食':{bg:C.warmSoft,color:C.warm,border:C.warmBorder},'購物':{bg:C.warmSoft,color:C.warm,border:C.warmBorder},'交通':{bg:C.purpleSoft,color:C.purple,border:'#C0D8E8'},'住宿':{bg:C.blueSoft,color:C.blue,border:'#B8D8E8'},'其他':{bg:'#F0EDE8',color:C.textMuted,border:C.border}};
@@ -3339,10 +3350,11 @@ function TripDetailScreen({ user, trip, onBack }) {
               </div>
               <button onClick={() => setInviteVisible(v=>!v)} style={{ backgroundColor:C.bg, border:`1.5px solid ${C.border}`, borderRadius:10, padding:'14px', fontSize:13, cursor:'pointer', color:C.textMuted, fontWeight:600 }}>{inviteVisible?'隱藏':'顯示'}</button>
             </div>
-            {inviteVisible && <button onClick={copyCode} style={{ width:'100%', border:'none', borderRadius:12, padding:13, fontSize:14, fontWeight:700, cursor:'pointer', backgroundColor:copied?C.successSoft:C.blueSoft, color:copied?C.success:C.blue, marginBottom:14 }}>{copied?'✓ 已複製！':'複製邀請碼'}</button>}
+            {inviteVisible && <button onClick={copyCode} style={{ width:'100%', border:'none', borderRadius:12, padding:13, fontSize:14, fontWeight:700, cursor:'pointer', backgroundColor:copied?C.successSoft:C.blueSoft, color:copied?C.success:C.blue, marginBottom:10 }}>{copied?'✓ 已複製邀請碼！':'複製邀請碼'}</button>}
+            <button onClick={copyLink} style={{ width:'100%', border:'none', borderRadius:12, padding:13, fontSize:14, fontWeight:700, cursor:'pointer', background:linkCopied?C.successSoft:`linear-gradient(135deg,${C.blue},${C.green})`, color:linkCopied?C.success:'#fff', marginBottom:14 }}>{linkCopied?'✓ 連結已複製！':'🔗 分享邀請連結'}</button>
             <div style={{ padding:'12px 14px', backgroundColor:C.bg, borderRadius:12, border:`1px solid ${C.border}` }}>
-              <div style={{ fontSize:12, color:C.textMuted, marginBottom:6, fontWeight:600 }}>朋友加入步驟</div>
-              <div style={{ fontSize:13, color:C.text, lineHeight:1.8 }}>1. 開啟旅遊小助理並登入<br/>2. 點「輸入邀請碼加入旅程」<br/>3. 輸入 6 位邀請碼即可</div>
+              <div style={{ fontSize:12, color:C.textMuted, marginBottom:6, fontWeight:600 }}>朋友加入方式</div>
+              <div style={{ fontSize:13, color:C.text, lineHeight:1.8 }}>📱 <strong>最快</strong>：傳「分享邀請連結」給朋友，點開登入後自動加入<br/>⌨️ 或請朋友登入後，輸入 6 位邀請碼</div>
             </div>
           </div>
         </div>
@@ -4504,6 +4516,17 @@ class ErrorBoundary extends React.Component {
 export default function App() {
   const [authUser, setAuthUser] = useState(undefined);
   const [currentTrip, setCurrentTrip] = useState(null);
+  const [pendingInvite, setPendingInvite] = useState(null);
+  const [autoJoining, setAutoJoining] = useState(false);
+
+  // 讀取網址的邀請碼 ?invite=XXXXXX
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const inv = params.get('invite');
+      if (inv) setPendingInvite(inv.trim().toUpperCase());
+    } catch(e) {}
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
@@ -4513,8 +4536,40 @@ export default function App() {
     return unsub;
   }, []);
 
+  // 登入後若有待處理的邀請碼，自動加入
+  useEffect(() => {
+    if (!authUser || !pendingInvite || currentTrip) return;
+    let cancelled = false;
+    (async () => {
+      setAutoJoining(true);
+      try {
+        const q = query(collection(db, "trips"), where("inviteCode", "==", pendingInvite));
+        const snap = await getDocs(q);
+        if (!snap.empty && !cancelled) {
+          const tripDoc = snap.docs[0];
+          const tripId = tripDoc.id;
+          const memberDoc = await getDoc(doc(db, "tripMembers", `${tripId}_${authUser.uid}`));
+          if (!memberDoc.exists()) {
+            await setDoc(doc(db, "tripMembers", `${tripId}_${authUser.uid}`), {
+              tripId, uid: authUser.uid,
+              displayName: authUser.displayName || authUser.email,
+              role: "member", joinedAt: serverTimestamp(),
+            });
+          }
+          if (!cancelled) setCurrentTrip({ id: tripId, ...tripDoc.data() });
+        }
+      } catch(e) {}
+      // 清掉網址參數，避免重複觸發
+      try { window.history.replaceState({}, '', window.location.pathname); } catch(e) {}
+      setPendingInvite(null);
+      setAutoJoining(false);
+    })();
+    return () => { cancelled = true; };
+  }, [authUser, pendingInvite, currentTrip]);
+
   if (authUser === undefined) return <LoadingScreen />;
   if (!authUser) return <AuthScreen />;
+  if (autoJoining) return <LoadingScreen />;
   if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} /></ErrorBoundary>;
   return <TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />;
 }
