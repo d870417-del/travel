@@ -1266,11 +1266,19 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
             const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
               method:'POST',
               headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ contents:[{ parts }] })
+              body: JSON.stringify({
+                contents:[{ parts }],
+                generationConfig:{ maxOutputTokens:4096, temperature:0.1 }
+              })
             });
             const data = await resp.json();
             const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            const clean = raw.replace(/```json|```/g,'').trim();
+            let clean = raw.replace(/```json|```/g,'').trim();
+            // 修復被截斷的 JSON：補上缺少的結尾
+            if (clean && !clean.endsWith('}')) {
+              const lastBrace = clean.lastIndexOf('}');
+              if (lastBrace > 0) clean = clean.slice(0, lastBrace+1) + ']}';
+            }
             const parsed = JSON.parse(clean);
             const items = parsed.items||[];
             setUParsed(items);
