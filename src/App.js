@@ -1540,7 +1540,15 @@ function TripDetailScreen({ user, trip, onBack }) {
         pdf.addImage(imgData, 'JPEG', 0, pos, imgW, imgH);
         heightLeft -= ph;
       }
-      pdf.save(`${filename}.pdf`);
+      // 用 Blob 方式下載 PDF，分享時只會帶 PDF 檔本身，不帶網頁網址
+      const pdfBlob = pdf.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
     } catch(e) {
       // 後備：下載 HTML
       const blob = new Blob([html], { type:'text/html;charset=utf-8' });
@@ -1552,7 +1560,7 @@ function TripDetailScreen({ user, trip, onBack }) {
     }
   };
 
-  const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🏨','其他':'📌'};
+  const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🛏','其他':'📌'};
 
   // ① 行程表 PDF
   const downloadItineraryExcel = async () => {
@@ -1651,6 +1659,9 @@ function TripDetailScreen({ user, trip, onBack }) {
       .check-row{display:flex;gap:10px;align-items:center;padding:5px 0;font-size:14px}
       .check-box{width:16px;height:16px;border:1.5px solid #C68B5E;border-radius:3px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#A8694A;font-weight:900}
       .footer{text-align:center;padding:30px;color:#A89684;font-size:12px;letter-spacing:2px;border-top:1px solid #E8D5C0}
+      .info-box{background:#F7EFE4;border-left:3px solid #C68B5E;padding:10px 14px;margin-bottom:10px;border-radius:4px}
+      .info-label{font-size:11px;font-weight:900;color:#A8694A;letter-spacing:2px;margin-bottom:4px}
+      .info-line{font-size:13px;color:#6B5D4A;padding:2px 0}
       @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.day-section,.block{page-break-inside:avoid}}
     </style></head><body>
     <div class="cover">
@@ -1664,23 +1675,23 @@ function TripDetailScreen({ user, trip, onBack }) {
       const dayFlights = transports.filter(t=>t.date===d);
       const dIdx = tripDates.indexOf(d);
       const dayLodge = lodgings.filter(l=>{ if(!l.checkIn||!l.checkOut)return false; const ci=tripDates.indexOf(l.checkIn),co=tripDates.indexOf(l.checkOut); if(ci<0||co<0)return false; return dIdx>=ci&&dIdx<=co; });
-      const travelLine = [
-        ...dayFlights.map(t=>`${t.type==='flight'?'✈️':'🚄'} ${t.label||''} ${t.time||''} ${t.from?`${t.from}→${t.to}`:''} ${t.code||''}`.trim()),
-        ...dayLodge.map(l=>`🏨 ${l.mapUrl?`<a href="${l.mapUrl}" style="color:#6B5D4A">${l.name}</a>`:l.name}${l.checkIn===d?'（入住）':l.checkOut===d?'（退房）':''}`),
-      ];
+      const flightLines = dayFlights.map(t=>`${t.label||(t.type==='flight'?'航班':'交通')}　${t.time||''}　${t.from?`${t.from} → ${t.to}`:''}${t.code?`　${t.code}`:''}`.trim());
+      const lodgeLines = dayLodge.map(l=>`${l.mapUrl?`<a href="${l.mapUrl}" style="color:#6B5D4A">${l.name}</a>`:l.name}${l.checkIn===d?'（入住）':l.checkOut===d?'（退房）':''}`);
       return `
       <div class="day-section">
         <div class="day-header">
           <span class="day-num">${d==='待安排'?'待安排':`DAY ${di+1}`}</span>
           <span class="day-date">${d}</span>
         </div>
-        ${travelLine.length?`<div style="background:#F7EFE4;border-left:3px solid #C68B5E;padding:10px 14px;margin-bottom:14px;border-radius:4px">${travelLine.map(x=>`<div style="font-size:13px;color:#6B5D4A;padding:2px 0">${x}</div>`).join('')}</div>`:''}
+        ${flightLines.length?`<div class="info-box"><div class="info-label">交通</div>${flightLines.map(x=>`<div class="info-line">${x}</div>`).join('')}</div>`:''}
+        ${lodgeLines.length?`<div class="info-box"><div class="info-label">住宿</div>${lodgeLines.map(x=>`<div class="info-line">${x}</div>`).join('')}</div>`:''}
         <div class="timeline">
           ${byDay[d].map(it=>`
             <div class="stop">
               ${it.time?`<div class="stop-time">${it.time}</div>`:''}
-              <div class="stop-name">${catIcon[it.category]||'📍'} ${it.name}</div>
-              ${it.location?`<div class="stop-cat">📍 ${it.location}</div>`:''}
+              <div class="stop-name">${it.name}</div>
+              ${it.category?`<div class="stop-cat">${it.category}</div>`:''}
+              ${it.location?`<div class="stop-cat">${it.location}</div>`:''}
               ${it.note?`<div class="stop-note">${it.note}</div>`:''}
             </div>`).join('')}
         </div>
@@ -1694,7 +1705,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             ${f.foodType?`<span class="food-tag">${f.foodType}</span>`:''}
             <div style="flex:1">
               <div class="food-name">${f.name||''}</div>
-              ${(()=>{ const locs=(f.districts||[f.district]).filter(Boolean); return locs.length?`<div class="food-loc">📍 ${locs.join('、')}</div>`:''; })()}
+              ${(()=>{ const locs=(f.districts||[f.district]).filter(Boolean); return locs.length?`<div class="food-loc">${locs.join('、')}</div>`:''; })()}
             </div>
           </div>`).join('')}
       </div>
@@ -2118,13 +2129,13 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
           <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>選擇日期</span>
           <div style={{ display:'flex', gap:6 }}>
-            <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>✈️🏨 交通住宿</button>
+            <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>✈️🛏 交通住宿</button>
             <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📥 智能匯入</button>
             <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 日期</button>
           </div>
         </div>
         <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
-          {tripDates.map(d => (
+          {['待安排',...tripDates.filter(d=>d!=='待安排')].filter(d=>tripDates.includes(d)).map(d => (
             <div key={d} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
               <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
               {d!=='待安排' && <button onClick={() => setConfirmDel({title:'刪除日期',message:`確定刪除 ${d} 的日期？日期內的行程不會被刪除。`,fn:()=>handleDeleteDate(d)})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
@@ -2147,34 +2158,47 @@ function TripDetailScreen({ user, trip, onBack }) {
           });
           const checkoutToday = lodgings.filter(l=>l.checkOut===selectedDate);
           if(dayFlights.length===0 && dayLodgings.length===0 && checkoutToday.length===0) return null;
+          const allLodge = [...dayLodgings, ...checkoutToday.filter(c=>!dayLodgings.find(l=>l.id===c.id))];
           return (
-            <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
-              {dayFlights.map(t=>(
-                <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
-                  <span style={{ fontSize:16 }}>{t.type==='flight'?'✈️':'🚄'}</span>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, fontWeight:700 }}>{t.label||(t.type==='flight'?'航班':'交通')} {t.time||''}</div>
-                    {(t.from||t.to)&&<div style={{ fontSize:12, color:C.textMuted }}>{t.from} → {t.to} {t.code?`· ${t.code}`:''}</div>}
-                  </div>
+            <>
+              {/* 交通格子 */}
+              {dayFlights.length>0 && (
+                <div style={{ marginBottom:10, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.warm, marginBottom:6 }}>✈️ 今日交通</div>
+                  {dayFlights.map(t=>(
+                    <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
+                      <span style={{ fontSize:16 }}>{t.type==='flight'?'✈️':'🚄'}</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13, fontWeight:700 }}>{t.label||(t.type==='flight'?'航班':'交通')} {t.time||''}</div>
+                        {(t.from||t.to)&&<div style={{ fontSize:12, color:C.textMuted }}>{t.from} → {t.to} {t.code?`· ${t.code}`:''}</div>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {dayLodgings.map(l=>(
-                <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
-                  <span style={{ fontSize:16 }}>🏨</span>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, fontWeight:700 }}>{l.name} {l.checkIn===selectedDate&&<span style={{ fontSize:11, color:C.warm }}>（入住）</span>}</div>
-                    {l.code&&<div style={{ fontSize:12, color:C.textMuted }}>訂房編號 {l.code}</div>}
-                  </div>
-                  {l.mapUrl&&<a href={l.mapUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:C.warm, fontWeight:700, textDecoration:'none', padding:'4px 8px', borderRadius:6, border:`1px solid ${C.warm}44`, backgroundColor:'#fff' }}>📍 地圖</a>}
+              )}
+              {/* 住宿格子 */}
+              {allLodge.length>0 && (
+                <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.warm, marginBottom:6 }}>🛏 今日住宿</div>
+                  {dayLodgings.map(l=>(
+                    <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
+                      <span style={{ fontSize:16 }}>🛏</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13, fontWeight:700 }}>{l.name} {l.checkIn===selectedDate&&<span style={{ fontSize:11, color:C.warm }}>（入住）</span>}</div>
+                        {l.code&&<div style={{ fontSize:12, color:C.textMuted }}>訂房編號 {l.code}</div>}
+                      </div>
+                      {l.mapUrl&&<a href={l.mapUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:C.warm, fontWeight:700, textDecoration:'none', padding:'4px 8px', borderRadius:6, border:`1px solid ${C.warm}44`, backgroundColor:'#fff' }}>📍 地圖</a>}
+                    </div>
+                  ))}
+                  {checkoutToday.filter(c=>!dayLodgings.find(l=>l.id===c.id)).map(l=>(
+                    <div key={'co'+l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
+                      <span style={{ fontSize:16 }}>🧳</span>
+                      <div style={{ fontSize:13, fontWeight:700 }}>{l.name} <span style={{ fontSize:11, color:C.textMuted }}>（退房）</span></div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {checkoutToday.map(l=>(
-                <div key={'co'+l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
-                  <span style={{ fontSize:16 }}>🧳</span>
-                  <div style={{ fontSize:13, fontWeight:700 }}>{l.name} <span style={{ fontSize:11, color:C.textMuted }}>（退房）</span></div>
-                </div>
-              ))}
-            </div>
+              )}
+            </>
           );
         })()}
         {/* 當天連結的美食 */}
@@ -4577,13 +4601,13 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
       {/* ─── 上傳行程表解析 Modal ─── */}
-      {/* ✈️🏨 交通住宿管理面板 */}
+      {/* ✈️🛏 交通住宿管理面板 */}
       {travelInfoOpen && (
         <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
           <div onClick={()=>setTravelInfoOpen(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
           <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'88vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-              <div style={{ fontSize:17, fontWeight:800 }}>✈️🏨 交通與住宿</div>
+              <div style={{ fontSize:17, fontWeight:800 }}>✈️🛏 交通與住宿</div>
               <button onClick={()=>setTravelInfoOpen(false)} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
             </div>
             {tripDates.some(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)) && (
@@ -4615,14 +4639,14 @@ function TripDetailScreen({ user, trip, onBack }) {
 
             {/* 住宿 */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>🏨 住宿</div>
+              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>🛏 住宿</div>
               <button onClick={()=>setLodgingModal({open:true,data:null})} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 新增</button>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {lodgings.length===0 ? <div style={{ fontSize:12, color:C.textMuted, padding:'8px 0' }}>尚未新增住宿</div> :
                 [...lodgings].sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||'')).map(l=>(
                   <div key={l.id} style={{ ...gs.card, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
-                    <span style={{ fontSize:20 }}>🏨</span>
+                    <span style={{ fontSize:20 }}>🛏</span>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:14, fontWeight:700 }}>{l.name}</div>
                       <div style={{ fontSize:12, color:C.textMuted }}>{l.checkIn} ～ {l.checkOut} {l.code?`· ${l.code}`:''}</div>
