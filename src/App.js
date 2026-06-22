@@ -1444,12 +1444,25 @@ function TripDetailScreen({ user, trip, onBack }) {
   });
 
   const openPrint = (html) => {
-    const w = window.open('', '_blank');
-    w.document.write(html); w.document.close();
+    // 用隱藏 iframe 列印，避免手機開新分頁卡住主頁面
+    const existing = document.getElementById('__print_frame');
+    if (existing) existing.remove();
+    const iframe = document.createElement('iframe');
+    iframe.id = '__print_frame';
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const idoc = iframe.contentWindow.document;
+    idoc.open(); idoc.write(html); idoc.close();
+    const cleanup = () => { setTimeout(() => { const f=document.getElementById('__print_frame'); if(f) f.remove(); }, 300); };
     setTimeout(() => {
-      w.onafterprint = () => w.close(); // 列印完或按取消，自動關閉
-      w.print();
-    }, 500);
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.onafterprint = cleanup;
+        iframe.contentWindow.print();
+      } catch(e) { cleanup(); }
+      // 保險：若 onafterprint 沒觸發，10 秒後仍清除
+      setTimeout(cleanup, 10000);
+    }, 400);
   };
 
   const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🏨','其他':'📌'};
@@ -3253,16 +3266,20 @@ function TripDetailScreen({ user, trip, onBack }) {
     );
 
     // ── 更多首頁 ──
-    const moreItems = [
-      { id:'shared-memo', emoji:'📋', label:'共用備忘錄', desc:`${sharedMemos.length} 則`, color:C.blue, bg:C.blueSoft },
-      { id:'personal-memo', emoji:'🗒', label:'個人備忘錄', desc:`${personalMemos.length} 則`, color:C.purple, bg:C.purpleSoft },
+    const topItems = [
       { id:'members', emoji:'👥', label:'成員', desc:`${members.length} 人`, color:C.warm, bg:C.warmSoft },
       { id:'invite', emoji:'🔑', label:'邀請碼', desc:trip.inviteCode||'...', color:C.green, bg:C.greenSoft },
     ];
+    const memoItemsList = [
+      { id:'shared-memo', emoji:'📋', label:'共用備忘錄', desc:`${sharedMemos.length} 則・所有成員可見`, fn:()=>setMoreSection('shared-memo') },
+      { id:'personal-memo', emoji:'🗒', label:'個人備忘錄', desc:`${personalMemos.length} 則・只有你看得到`, fn:()=>setMoreSection('personal-memo') },
+    ];
+    const sectionLabel = { fontSize:11, fontWeight:800, color:C.textMuted, textTransform:'uppercase', letterSpacing:1, marginBottom:12 };
+    const rowCard = { ...gs.card, cursor:'pointer', textAlign:'left', padding:'14px 16px', border:`1.5px solid ${C.blue}22`, background:C.surface, display:'flex', alignItems:'center', gap:14 };
     return (
       <div style={{ flex:1, overflowY:'auto', padding:20 }}>
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          {moreItems.map(item => (
+          {topItems.map(item => (
             <button key={item.id} onClick={() => setMoreSection(item.id)}
               style={{ ...gs.card, cursor:'pointer', textAlign:'left', padding:'16px 18px', border:`1.5px solid ${item.color}22`, background:item.bg, display:'flex', alignItems:'center', gap:16 }}>
               <div style={{ fontSize:30 }}>{item.emoji}</div>
@@ -3275,9 +3292,26 @@ function TripDetailScreen({ user, trip, onBack }) {
           ))}
         </div>
 
+        {/* ─ 備忘錄區 ─ */}
+        <div style={{ marginTop:20 }}>
+          <div style={sectionLabel}>備忘錄</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {memoItemsList.map(item => (
+              <button key={item.id} onClick={item.fn} style={rowCard}>
+                <div style={{ fontSize:28 }}>{item.emoji}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:800, color:C.blue }}>{item.label}</div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{item.desc}</div>
+                </div>
+                <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ─ 下載區 ─ */}
         <div style={{ marginTop:20 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:C.textMuted, textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>下載旅程資料</div>
+          <div style={sectionLabel}>下載旅程資料</div>
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {[
               { key:'pdf',      emoji:'🗓', label:'行程表 PDF', desc:'每天行程一覽，可列印帶著走', fn: downloadItineraryPDF },
@@ -3285,7 +3319,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               { key:'excel',    emoji:'📊', label:'帳務明細 Excel', desc:'公費、個人帳、代墊、購物四個工作表', fn: downloadWalletExcel },
             ].map(({ key, emoji, label, desc, fn }) => (
               <button key={key} onClick={fn} disabled={!!downloading}
-                style={{ ...gs.card, cursor:'pointer', textAlign:'left', padding:'14px 16px', border:`1.5px solid ${C.blue}22`, background:downloading===key?C.blueSoft:C.surface, display:'flex', alignItems:'center', gap:14, opacity:downloading&&downloading!==key?0.5:1 }}>
+                style={{ ...rowCard, background:downloading===key?C.blueSoft:C.surface, opacity:downloading&&downloading!==key?0.5:1 }}>
                 <div style={{ fontSize:28 }}>{downloading===key?'⏳':emoji}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:800, color:C.blue }}>{label}</div>
