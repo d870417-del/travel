@@ -1661,10 +1661,9 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div class="members">${members.map(m=>m.displayName).join('　·　')}</div>
     </div>
     ${dayList.map((d,di)=>{
-      const toDate = s => { const [m,dd]=s.split('/').map(Number); return new Date(2000,m-1,dd); };
-      const sel = d!=='待安排' ? toDate(d) : null;
       const dayFlights = transports.filter(t=>t.date===d);
-      const dayLodge = sel ? lodgings.filter(l=>{ if(!l.checkIn||!l.checkOut)return false; const ci=toDate(l.checkIn),co=toDate(l.checkOut); return sel>=ci&&sel<=co; }) : [];
+      const dIdx = tripDates.indexOf(d);
+      const dayLodge = lodgings.filter(l=>{ if(!l.checkIn||!l.checkOut)return false; const ci=tripDates.indexOf(l.checkIn),co=tripDates.indexOf(l.checkOut); if(ci<0||co<0)return false; return dIdx>=ci&&dIdx<=co; });
       const travelLine = [
         ...dayFlights.map(t=>`${t.type==='flight'?'✈️':'🚄'} ${t.label||''} ${t.time||''} ${t.from?`${t.from}→${t.to}`:''} ${t.code||''}`.trim()),
         ...dayLodge.map(l=>`🏨 ${l.name}${l.checkIn===d?'（入住）':l.checkOut===d?'（退房）':''}`),
@@ -1799,6 +1798,29 @@ function TripDetailScreen({ user, trip, onBack }) {
   }
   async function saveItinerary(items, dates) {
     await setDoc(doc(db,"tripData",`${trip.id}_itinerary`), { items:JSON.parse(JSON.stringify(items)), dates, updatedAt:serverTimestamp() });
+  }
+
+  // 一鍵修復：把 YYYY-MM-DD 格式統一轉成 MM/DD
+  async function fixDateFormats() {
+    const toMMDD = s => {
+      if (!s || s==='待安排') return s;
+      const m = s.match(/^\d{4}-(\d{2})-(\d{2})$/);
+      return m ? `${m[1]}/${m[2]}` : s;
+    };
+    // 行程日期
+    const newDates = tripDates.map(toMMDD);
+    const newItems = itinerary.map(it=>({ ...it, date:toMMDD(it.date) }));
+    setTripDates(newDates); setItinerary(newItems);
+    await saveItinerary(newItems, newDates);
+    // 交通
+    const newTrans = transports.map(t=>({ ...t, date:toMMDD(t.date) }));
+    if(newTrans.length) await saveTransports(newTrans);
+    // 住宿
+    const newLodge = lodgings.map(l=>({ ...l, checkIn:toMMDD(l.checkIn), checkOut:toMMDD(l.checkOut) }));
+    if(newLodge.length) await saveLodgings(newLodge);
+    // 重設選中日期
+    const firstDate = newDates.filter(d=>d!=='待安排')[0];
+    if(firstDate) setSelectedDate(firstDate);
   }
   async function saveTransports(items) {
     setTransports(items);
@@ -2114,13 +2136,14 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ padding:16, flex:1 }}>
         {/* 當天的交通住宿 */}
         {selectedDate!=='待安排' && (() => {
-          const toDate = s => { const [m,d]=s.split('/').map(Number); return new Date(2000,m-1,d); };
-          const sel = toDate(selectedDate);
           const dayFlights = transports.filter(t=>t.date===selectedDate);
+          // 用 tripDates 的索引判斷住宿區間（不依賴日期格式）
+          const dIdx = tripDates.indexOf(selectedDate);
           const dayLodgings = lodgings.filter(l=>{
             if(!l.checkIn||!l.checkOut) return false;
-            const ci=toDate(l.checkIn), co=toDate(l.checkOut);
-            return sel>=ci && sel<co; // 入住日到退房前一天
+            const ci=tripDates.indexOf(l.checkIn), co=tripDates.indexOf(l.checkOut);
+            if(ci<0||co<0) return false;
+            return dIdx>=ci && dIdx<co; // 入住日到退房前一天
           });
           const checkoutToday = lodgings.filter(l=>l.checkOut===selectedDate);
           if(dayFlights.length===0 && dayLodgings.length===0 && checkoutToday.length===0) return null;
@@ -4562,6 +4585,12 @@ function TripDetailScreen({ user, trip, onBack }) {
               <div style={{ fontSize:17, fontWeight:800 }}>✈️🏨 交通與住宿</div>
               <button onClick={()=>setTravelInfoOpen(false)} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
             </div>
+            {tripDates.some(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)) && (
+              <div style={{ padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:12, border:`1px solid ${C.warmBorder}`, marginBottom:18 }}>
+                <div style={{ fontSize:12, color:C.text, marginBottom:8 }}>⚠️ 偵測到舊格式日期（含年份），可能導致交通住宿對不上行程。</div>
+                <button onClick={async()=>{ await fixDateFormats(); }} style={{ width:'100%', padding:'10px', borderRadius:10, border:'none', backgroundColor:C.warm, color:'#fff', fontSize:13, fontWeight:800, cursor:'pointer' }}>🔧 一鍵修復日期格式</button>
+              </div>
+            )}
 
             {/* 航班/交通 */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
@@ -4623,8 +4652,14 @@ function TripDetailScreen({ user, trip, onBack }) {
               </div>
               <input placeholder={cur.type==='flight'?'標題（去程/回程）':'標題（如：JR 特急）'} value={cur.label||''} onChange={e=>set('label',e.target.value)} style={{ ...gs.input, marginBottom:10 }}/>
               <div style={{ display:'flex', gap:8, marginBottom:10 }}>
-                <input placeholder="日期 MM/DD" value={cur.date||''} onChange={e=>set('date',e.target.value)} style={{ ...gs.input, flex:1 }}/>
-                <input placeholder="時間 HH:MM" value={cur.time||''} onChange={e=>set('time',e.target.value)} style={{ ...gs.input, flex:1 }}/>
+                <select value={cur.date||''} onChange={e=>set('date',e.target.value)} style={{ ...gs.input, flex:1, appearance:'none' }}>
+                  <option value="">選擇日期</option>
+                  {tripDates.filter(d=>d!=='待安排').map(d=><option key={d} value={d}>{d}</option>)}
+                </select>
+                <select value={cur.time||''} onChange={e=>set('time',e.target.value)} style={{ ...gs.input, flex:1, appearance:'none' }}>
+                  <option value="">選擇時間</option>
+                  {Array.from({length:48}).map((_,i)=>{ const h=String(Math.floor(i/2)).padStart(2,'0'); const m=i%2?'30':'00'; const t=`${h}:${m}`; return <option key={t} value={t}>{t}</option>; })}
+                </select>
               </div>
               <div style={{ display:'flex', gap:8, marginBottom:10 }}>
                 <input placeholder="出發地" value={cur.from||''} onChange={e=>set('from',e.target.value)} style={{ ...gs.input, flex:1 }}/>
@@ -4658,12 +4693,18 @@ function TripDetailScreen({ user, trip, onBack }) {
               <input placeholder="飯店名稱" value={cur.name||''} onChange={e=>set('name',e.target.value)} style={{ ...gs.input, marginBottom:10 }}/>
               <div style={{ display:'flex', gap:8, marginBottom:10 }}>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>入住日 MM/DD</div>
-                  <input placeholder="06/06" value={cur.checkIn||''} onChange={e=>set('checkIn',e.target.value)} style={{ ...gs.input, width:'100%' }}/>
+                  <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>入住日</div>
+                  <select value={cur.checkIn||''} onChange={e=>set('checkIn',e.target.value)} style={{ ...gs.input, width:'100%', appearance:'none' }}>
+                    <option value="">選擇</option>
+                    {tripDates.filter(d=>d!=='待安排').map(d=><option key={d} value={d}>{d}</option>)}
+                  </select>
                 </div>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>退房日 MM/DD</div>
-                  <input placeholder="06/09" value={cur.checkOut||''} onChange={e=>set('checkOut',e.target.value)} style={{ ...gs.input, width:'100%' }}/>
+                  <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>退房日</div>
+                  <select value={cur.checkOut||''} onChange={e=>set('checkOut',e.target.value)} style={{ ...gs.input, width:'100%', appearance:'none' }}>
+                    <option value="">選擇</option>
+                    {tripDates.filter(d=>d!=='待安排').map(d=><option key={d} value={d}>{d}</option>)}
+                  </select>
                 </div>
               </div>
               <input placeholder="訂房編號（選填）" value={cur.code||''} onChange={e=>set('code',e.target.value)} style={{ ...gs.input, marginBottom:18 }}/>
