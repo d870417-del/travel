@@ -1592,6 +1592,10 @@ function TripDetailScreen({ user, trip, onBack }) {
     // 行程亮點（每天第一筆）
     const highlights = {};
     [...itinerary].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(it=>{ if(!highlights[it.date]) highlights[it.date]=it; });
+    // 美食清單
+    const foods = [...foodItems].slice(0, 30);
+    // 備忘清單（共用備忘錄裡的 checklist 項目）
+    const checklistMemos = sharedMemos.filter(m=>m.type==='checklist' && (m.items||[]).length>0);
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${trip.name} 旅程總覽</title><style>
       body{font-family:-apple-system,sans-serif;margin:0;padding:0;color:#2A2520;background:#fff}
       .hero{background:linear-gradient(135deg,#2A8FA5,#3DAD8A);color:#fff;padding:40px 28px 32px}
@@ -1610,6 +1614,14 @@ function TripDetailScreen({ user, trip, onBack }) {
       .hl-name{font-size:14px;font-weight:700}
       .exp-box{background:#E6F5EF;border-radius:12px;padding:16px 20px;margin-top:8px}
       .exp-val{font-size:20px;font-weight:900;color:#3DAD8A}
+      .food-row{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #F4F0E6}
+      .food-tag{font-size:11px;padding:2px 8px;border-radius:5px;background:#F7EAE0;color:#C07850;font-weight:700;white-space:nowrap}
+      .food-name{font-size:14px;font-weight:700}
+      .food-loc{font-size:12px;color:#9C9080}
+      .memo-group{margin-bottom:14px}
+      .memo-title{font-size:14px;font-weight:800;margin-bottom:6px;color:#2A8FA5}
+      .check-row{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px}
+      .check-box{width:15px;height:15px;border:1.5px solid #DDD5C0;border-radius:4px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#3DAD8A}
       @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body>
     <div class="hero">
@@ -1622,8 +1634,8 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div class="stat-row">
         <div class="stat"><div class="stat-val">${tripDates.filter(d=>d!=='待安排').length}</div><div class="stat-label">旅遊天數</div></div>
         <div class="stat"><div class="stat-val">${itinerary.length}</div><div class="stat-label">行程項目</div></div>
+        <div class="stat"><div class="stat-val">${foodItems.length}</div><div class="stat-label">想吃美食</div></div>
         <div class="stat"><div class="stat-val">${members.length}</div><div class="stat-label">同行人數</div></div>
-        <div class="stat"><div class="stat-val">${walletItems.filter(i=>i.type==='支出').length}</div><div class="stat-label">消費筆數</div></div>
       </div>
     </div>
     <div class="section">
@@ -1644,6 +1656,29 @@ function TripDetailScreen({ user, trip, onBack }) {
     ${expStr?`<div class="section">
       <div class="section-title">費用總計（共同公費）</div>
       <div class="exp-box"><div class="exp-val">${expStr}</div><div style="font-size:12px;color:#3DAD8A;margin-top:4px">${walletItems.filter(i=>i.type==='支出').length} 筆消費</div></div>
+    </div>`:''}
+    ${foods.length?`<div class="section">
+      <div class="section-title">想吃美食（${foodItems.length}）</div>
+      ${foods.map(f=>`
+        <div class="food-row">
+          ${f.foodType?`<span class="food-tag">${f.foodType}</span>`:''}
+          <div style="flex:1">
+            <div class="food-name">${f.name||''}</div>
+            ${(()=>{ const locs=(f.districts||[f.district]).filter(Boolean); return locs.length?`<div class="food-loc">📍 ${locs.join('、')}</div>`:''; })()}
+          </div>
+        </div>`).join('')}
+    </div>`:''}
+    ${checklistMemos.length?`<div class="section">
+      <div class="section-title">備忘清單</div>
+      ${checklistMemos.map(m=>`
+        <div class="memo-group">
+          <div class="memo-title">${m.title||'清單'}</div>
+          ${(m.items||[]).map(it=>`
+            <div class="check-row">
+              <span class="check-box">${it.done?'✓':''}</span>
+              <span style="${it.done?'text-decoration:line-through;color:#9C9080':''}">${it.text||''}</span>
+            </div>`).join('')}
+        </div>`).join('')}
     </div>`:''}
     </body></html>`;
     await openPrint(html, `${trip.name}_旅程總覽`);
