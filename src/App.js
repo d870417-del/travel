@@ -2362,72 +2362,45 @@ function TripDetailScreen({ user, trip, onBack }) {
 
         {/* 💰 共同公費 */}
         <button onClick={()=>setWalletSubTab('shared-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.warm}22`, background:C.warmSoft, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.warm }}>💰 共同公費</div>
-            <div style={{ fontSize:18, color:C.warm }}>›</div>
-          </div>
-          {Object.keys(sharedTotals).length===0 ? (
-            <div style={{ fontSize:12, color:C.textMuted }}>尚無帳目，點此新增</div>
-          ) : (
-            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-              {Object.entries(sharedTotals).map(([cur,val])=>(
-                <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?'#F0EDE8':'#FDECEA', border:`1px solid ${val>=0?C.warm:C.danger}33` }}>
-                  <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?C.warm:C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
-                </div>
-              ))}
+          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.warm}22`, background:C.warmSoft, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
+          <div style={{ fontSize:30 }}>💰</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:15, fontWeight:800, color:C.warm }}>共同公費</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>
+              {Object.keys(sharedTotals).length===0 ? '尚無帳目' :
+                Object.entries(sharedTotals).map(([cur,val])=>`${val>=0?'+':''}${SYM[cur]||''}${Math.abs(val).toLocaleString()} ${cur}`).join('・')}
             </div>
-          )}
+          </div>
+          <div style={{ color:C.warm, fontSize:18 }}>›</div>
         </button>
 
         {/* 👤 個人記帳 */}
         <button onClick={()=>setWalletSubTab('personal-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.text}22`, background:'#F0EDE8', textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.text }}>👤 個人記帳</div>
-            <div style={{ fontSize:18, color:C.textMuted }}>›</div>
-          </div>
-          {Object.keys(personalTotals).length===0 ? (
-            <div style={{ fontSize:12, color:C.textMuted }}>尚無帳目，點此新增</div>
-          ) : (
-            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-              {Object.entries(personalTotals).map(([cur,val])=>(
-                <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:val>=0?'#F0EDE8':'#FDECEA', border:`1px solid ${val>=0?C.warm:C.danger}33` }}>
-                  <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:val>=0?C.warm:C.danger }}>{val>=0?'+':val<0?'-':''}{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
-                </div>
-              ))}
+          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.blue}22`, background:C.blueSoft, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
+          <div style={{ fontSize:30 }}>👤</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>個人記帳</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>
+              {Object.keys(personalTotals).length===0 ? '尚無帳目' :
+                Object.entries(personalTotals).map(([cur,val])=>`${val>=0?'+':''}${SYM[cur]||''}${Math.abs(val).toLocaleString()} ${cur}`).join('・')}
             </div>
-          )}
+          </div>
+          <div style={{ color:C.blue, fontSize:18 }}>›</div>
         </button>
 
         {/* 🔄 代墊結算 */}
         <button onClick={()=>setWalletSubTab('split-detail')}
-          style={{ ...gs.card, cursor:'pointer', padding:'18px 20px', border:`1.5px solid ${C.textMuted}22`, background:C.surface, textAlign:'left', display:'flex', flexDirection:'column', gap:10 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.text }}>🔄 代墊結算</div>
-            <div style={{ fontSize:18, color:C.textMuted }}>›</div>
+          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.green}22`, background:C.greenSoft, textAlign:'left', display:'flex', alignItems:'center', gap:16 }}>
+          <div style={{ fontSize:30 }}>🔄</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:15, fontWeight:800, color:C.green }}>代墊結算</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>
+              {unsettled.length===0 ? '目前沒有未結清的代墊' :
+                myTransfers.length>0 ? `⚠️ 有 ${myTransfers.length} 筆與我有關` :
+                `${unsettled.length} 筆未結清`}
+            </div>
           </div>
-          {unsettled.length===0 ? (
-            <div style={{ fontSize:12, color:C.textMuted }}>目前沒有未結清的代墊</div>
-          ) : (
-            <>
-              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-                {Object.entries(unsettled.reduce((acc,r)=>{ acc[r.currency]=(acc[r.currency]||0)+r.amount; return acc; },{})).map(([cur,val])=>(
-                  <div key={cur} style={{ padding:'6px 12px', borderRadius:10, backgroundColor:'#FFF0F0', border:`1px solid ${C.danger}33` }}>
-                    <div style={{ fontSize:10, color:C.textMuted }}>{cur}</div>
-                    <div style={{ fontSize:15, fontWeight:800, color:C.danger }}>-{SYM[cur]||''}{Math.abs(val).toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
-              {myTransfers.length>0 && (
-                <div style={{ padding:'6px 10px', borderRadius:8, backgroundColor:C.dangerSoft, border:`1px solid ${C.danger}33` }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.danger }}>⚠️ 有 {myTransfers.length} 筆與我有關</div>
-                </div>
-              )}
-            </>
-          )}
+          <div style={{ color:C.green, fontSize:18 }}>›</div>
         </button>
 
         {/* 匯率設定 */}
