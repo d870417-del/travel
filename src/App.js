@@ -2897,17 +2897,17 @@ function TripDetailScreen({ user, trip, onBack }) {
                     memberLabel=`${payer} 代墊・每人 ${per.toLocaleString()}${rem>0?'+':''}`;
                   }
                 }
-                const bg = isIncome?(CurrencyBg[cur]||C.greenSoft):'#F8F6FF';
-                const bc = isIncome?(CurrencyC[cur]||C.green)+'22':'#C4B0FF44';
+                const bg = C.surface;
+                const bc = C.border;
                 return (
                   <div key={item.id} style={{ ...gs.card, padding:'14px 16px', backgroundColor:bg, border:`1px solid ${bc}` }}>
                     <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
                       <div style={{ flex:1 }}>
                         <div style={{ display:'flex', gap:6, marginBottom:6, flexWrap:'wrap' }}>
-                          <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:isIncome?C.greenSoft:C.purpleSoft, color:isIncome?C.green:C.purple, fontSize:11, fontWeight:700 }}>{item.type}</span>
-                          <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.8)', color:CurrencyC[cur]||C.text, fontSize:11, fontWeight:800 }}>{cur}</span>
-                          {item.date&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.6)', color:C.textMuted, fontSize:11 }}>{item.date}</span>}
-                          {memberLabel&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:'rgba(255,255,255,0.6)', color:C.textMuted, fontSize:11 }}>{memberLabel}</span>}
+                          <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:isIncome?C.greenSoft:C.dangerSoft, color:isIncome?C.green:C.danger, fontSize:11, fontWeight:700 }}>{item.type}</span>
+                          <span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.bg, color:C.textMuted, fontSize:11, fontWeight:700 }}>{cur}</span>
+                          {item.date&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.bg, color:C.textMuted, fontSize:11 }}>{item.date}</span>}
+                          {memberLabel&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.bg, color:C.textMuted, fontSize:11 }}>{memberLabel}</span>}
                           {(item.note==='代墊已還'||item.note==='代墊結清')&&<span style={{ padding:'2px 8px', borderRadius:6, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700 }}>🔗 分攤記錄</span>}
                         </div>
                         <div style={{ fontSize:15, fontWeight:700, marginBottom:2 }}>{item.name}</div>
@@ -2916,7 +2916,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>{item.editedByName||'成員'} 記帳</div>
                       </div>
                       <div style={{ textAlign:'right', flexShrink:0 }}>
-                        <div style={{ fontSize:20, fontWeight:800, color:isIncome?(CurrencyC[cur]||C.green):C.purple }}>{isIncome?'+':'-'}{SYM[cur]||''}{Number(item.amount||0).toLocaleString()}</div>
+                        <div style={{ fontSize:20, fontWeight:800, color:isIncome?C.green:C.danger }}>{isIncome?'+':'-'}{SYM[cur]||''}{Number(item.amount||0).toLocaleString()}</div>
                         <div style={{ display:'flex', gap:4, marginTop:6, justifyContent:'flex-end' }}>
                           {/* 代墊自動記錄不可編輯 */}
                           {(item.note!=='代墊已還'&&item.note!=='代墊結清') && (
