@@ -1181,6 +1181,167 @@ const getCategoryStyle = (cat) => {
 };
 
 // ─── 行程規劃 Tab ─────────────────────────────────────────────
+// ─── 上傳行程表解析 Modal（獨立組件，避免 Hooks 數量變動）───
+function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDates, setItinerary, setTripDates, saveItinerary }) {
+        const [uMode, setUMode] = React.useState('file');
+        const [uText, setUText] = React.useState('');
+        const [uFile, setUFile] = React.useState(null);
+        const [uFileData, setUFileData] = React.useState(null);
+        const [uFileType, setUFileType] = React.useState(null);
+        const [uLoading, setULoading] = React.useState(false);
+        const [uParsed, setUParsed] = React.useState(null);
+        const [uSelected, setUSelected] = React.useState([]);
+        const [uError, setUError] = React.useState('');
+
+        const handleFile = (e) => {
+          const f = e.target.files[0]; if(!f) return;
+          setUFile(f); setUError('');
+          const reader = new FileReader();
+          reader.onload = ev => {
+            setUFileData(ev.target.result.split(',')[1]);
+            setUFileType(f.type.startsWith('image/') ? 'image' : 'pdf');
+          };
+          reader.readAsDataURL(f);
+        };
+
+        const handleParse = async () => {
+          setULoading(true); setUError('');
+          try {
+            const systemPrompt = `你是行程解析助手。請分析行程內容並只回傳純 JSON（不要說明、不要 markdown 代碼塊），格式：{"items":[{"date":"YYYY-MM-DD或空字串","name":"地點或活動名稱","category":"景點|美食|購物|交通|住宿|其他","time":"HH:MM或空字串","note":"備註說明"}]}`;
+            let content;
+            if(uMode==='text') {
+              content = `請解析這個行程表：\n\n${uText}`;
+            } else if(uFileType==='image') {
+              content = [
+                { type:'image', source:{ type:'base64', media_type:uFile.type, data:uFileData } },
+                { type:'text', text:'請解析這張行程表圖片，萃取所有行程項目。' }
+              ];
+            } else {
+              content = [
+                { type:'document', source:{ type:'base64', media_type:'application/pdf', data:uFileData } },
+                { type:'text', text:'請解析這份行程表文件，萃取所有行程項目。' }
+              ];
+            }
+            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({
+                model:'claude-sonnet-4-6', max_tokens:2000,
+                system: systemPrompt,
+                messages:[{ role:'user', content }]
+              })
+            });
+            const data = await resp.json();
+            const raw = (data.content||[]).map(c=>c.text||'').join('');
+            const clean = raw.replace(/```json|```/g,'').trim();
+            const parsed = JSON.parse(clean);
+            const items = parsed.items||[];
+            setUParsed(items);
+            setUSelected(items.map((_,i)=>i));
+          } catch(e) {
+            setUError('解析失敗，請確認格式後重試');
+          }
+          setULoading(false);
+        };
+
+        const handleAdd = () => {
+          const now = Date.now();
+          const newItems = uSelected.map((idx,i) => {
+            const it = uParsed[idx];
+            return { id:now+i, name:it.name||'未命名', category:it.category||'景點', date:it.date||'待安排', time:it.time||'', note:it.note||'', createdAt:now+i, editedByName:user.displayName||user.email, editedById:user.uid };
+          });
+          const newIti = [...itinerary, ...newItems];
+          const newDates = [...new Set(newItems.map(it=>it.date).filter(d=>d&&d!=='待安排'))].sort();
+          const merged = [...new Set([...tripDates.filter(d=>d!=='待安排'), ...newDates, '待安排'])].sort();
+          const finalDates = [...merged.filter(d=>d!=='待安排'), '待安排'];
+          setItinerary(newIti); setTripDates(finalDates);
+          saveItinerary(newIti, finalDates);
+          onClose();
+        };
+
+        const catColor = { '景點':C.green, '美食':C.warm, '購物':C.warm, '交通':C.purple, '住宿':C.blue, '其他':C.textMuted };
+
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+            <div onClick={()=>onClose()} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+            <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'88vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+                <div style={{ fontSize:17, fontWeight:800 }}>📋 智慧解析行程表</div>
+                <button onClick={()=>onClose()} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
+              </div>
+
+              {!uParsed ? (<>
+                <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                  {[['file','📎 上傳檔案'],['text','✏️ 貼上文字']].map(([m,label])=>(
+                    <button key={m} onClick={()=>setUMode(m)} style={{ flex:1, padding:'10px', borderRadius:10, border:`1.5px solid ${uMode===m?C.blue:C.border}`, backgroundColor:uMode===m?C.blueSoft:C.bg, color:uMode===m?C.blue:C.textMuted, fontWeight:700, fontSize:13, cursor:'pointer' }}>{label}</button>
+                  ))}
+                </div>
+                {uMode==='file' ? (
+                  <>
+                    <input type="file" accept="image/*,.pdf" onChange={handleFile} style={{ display:'none' }} id="iti-up"/>
+                    <label htmlFor="iti-up" style={{ display:'block', border:`2px dashed ${uFile?C.blue:C.border}`, borderRadius:16, padding:'36px 20px', textAlign:'center', cursor:'pointer', backgroundColor:uFile?C.blueSoft:'transparent' }}>
+                      {uFile ? (<>
+                        <div style={{ fontSize:36, marginBottom:8 }}>{uFileType==='image'?'🖼️':'📄'}</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.blue }}>{uFile.name}</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>點擊重新選擇</div>
+                      </>) : (<>
+                        <div style={{ fontSize:40, marginBottom:8 }}>📂</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>點擊上傳圖片或 PDF</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>截圖、拍照、PDF 都可以</div>
+                      </>)}
+                    </label>
+                  </>
+                ) : (
+                  <textarea style={{ ...gs.input, height:200, resize:'none', lineHeight:1.6 }}
+                    placeholder={'把行程文字貼在這裡，例如：\n6/20 10:00 淺草寺\n6/20 12:00 築地午餐\n6/21 成田機場回台灣'}
+                    value={uText} onChange={e=>setUText(e.target.value)}/>
+                )}
+                {uError && <div style={{ color:C.danger, fontSize:13, marginTop:10, textAlign:'center' }}>{uError}</div>}
+                <button onClick={handleParse} disabled={uLoading||(uMode==='file'?!uFileData:!uText.trim())}
+                  style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:700, cursor:'pointer', opacity:(uLoading||(uMode==='file'?!uFileData:!uText.trim()))?0.5:1 }}>
+                  {uLoading ? '⏳ AI 解析中...' : '✨ 開始解析'}
+                </button>
+              </>) : (<>
+                <div style={{ fontSize:13, color:C.textMuted, marginBottom:12 }}>
+                  解析到 <strong style={{ color:C.blue }}>{uParsed.length}</strong> 個項目，勾選要加入的：
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+                  {uParsed.map((item,i)=>{
+                    const sel=uSelected.includes(i);
+                    return (
+                      <div key={i} onClick={()=>setUSelected(s=>sel?s.filter(x=>x!==i):[...s,i])}
+                        style={{ padding:'10px 12px', borderRadius:12, border:`1.5px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blueSoft:C.bg, cursor:'pointer', display:'flex', gap:10, alignItems:'flex-start' }}>
+                        <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blue:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:2 }}>
+                          {sel&&<span style={{ color:'#fff', fontSize:12, fontWeight:900 }}>✓</span>}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                            <span style={{ fontSize:14, fontWeight:700 }}>{item.name}</span>
+                            <span style={{ fontSize:11, padding:'2px 7px', borderRadius:6, backgroundColor:(catColor[item.category]||C.textMuted)+'22', color:catColor[item.category]||C.textMuted, fontWeight:700 }}>{item.category||'其他'}</span>
+                          </div>
+                          {(item.date||item.time)&&<div style={{ fontSize:12, color:C.textMuted, marginTop:3 }}>
+                            {item.date&&<span>📅 {item.date}</span>}{item.date&&item.time&&' · '}{item.time&&<span>🕐 {item.time}</span>}
+                          </div>}
+                          {item.note&&<div style={{ fontSize:12, color:C.textMuted, marginTop:3, opacity:0.8 }}>{item.note}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display:'flex', gap:10 }}>
+                  <button onClick={()=>setUParsed(null)} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>↩ 重新解析</button>
+                  <button onClick={handleAdd} disabled={uSelected.length===0}
+                    style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer', opacity:uSelected.length===0?0.5:1 }}>
+                    加入行程（{uSelected.length} 項）
+                  </button>
+                </div>
+              </>)}
+            </div>
+          </div>
+        );
+}
+
+
 function TripDetailScreen({ user, trip, onBack }) {
   const color = trip.color || C.blue;
   const [tab, setTab] = useState('itinerary');
@@ -4194,164 +4355,13 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
       {/* ─── 上傳行程表解析 Modal ─── */}
-      {uploadModal.open && (() => {
-        const [uMode, setUMode] = React.useState('file');
-        const [uText, setUText] = React.useState('');
-        const [uFile, setUFile] = React.useState(null);
-        const [uFileData, setUFileData] = React.useState(null);
-        const [uFileType, setUFileType] = React.useState(null);
-        const [uLoading, setULoading] = React.useState(false);
-        const [uParsed, setUParsed] = React.useState(null);
-        const [uSelected, setUSelected] = React.useState([]);
-        const [uError, setUError] = React.useState('');
-
-        const handleFile = (e) => {
-          const f = e.target.files[0]; if(!f) return;
-          setUFile(f); setUError('');
-          const reader = new FileReader();
-          reader.onload = ev => {
-            setUFileData(ev.target.result.split(',')[1]);
-            setUFileType(f.type.startsWith('image/') ? 'image' : 'pdf');
-          };
-          reader.readAsDataURL(f);
-        };
-
-        const handleParse = async () => {
-          setULoading(true); setUError('');
-          try {
-            const systemPrompt = `你是行程解析助手。請分析行程內容並只回傳純 JSON（不要說明、不要 markdown 代碼塊），格式：{"items":[{"date":"YYYY-MM-DD或空字串","name":"地點或活動名稱","category":"景點|美食|購物|交通|住宿|其他","time":"HH:MM或空字串","note":"備註說明"}]}`;
-            let content;
-            if(uMode==='text') {
-              content = `請解析這個行程表：\n\n${uText}`;
-            } else if(uFileType==='image') {
-              content = [
-                { type:'image', source:{ type:'base64', media_type:uFile.type, data:uFileData } },
-                { type:'text', text:'請解析這張行程表圖片，萃取所有行程項目。' }
-              ];
-            } else {
-              content = [
-                { type:'document', source:{ type:'base64', media_type:'application/pdf', data:uFileData } },
-                { type:'text', text:'請解析這份行程表文件，萃取所有行程項目。' }
-              ];
-            }
-            const resp = await fetch('https://api.anthropic.com/v1/messages', {
-              method:'POST',
-              headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({
-                model:'claude-sonnet-4-6', max_tokens:2000,
-                system: systemPrompt,
-                messages:[{ role:'user', content }]
-              })
-            });
-            const data = await resp.json();
-            const raw = (data.content||[]).map(c=>c.text||'').join('');
-            const clean = raw.replace(/```json|```/g,'').trim();
-            const parsed = JSON.parse(clean);
-            const items = parsed.items||[];
-            setUParsed(items);
-            setUSelected(items.map((_,i)=>i));
-          } catch(e) {
-            setUError('解析失敗，請確認格式後重試');
-          }
-          setULoading(false);
-        };
-
-        const handleAdd = () => {
-          const now = Date.now();
-          const newItems = uSelected.map((idx,i) => {
-            const it = uParsed[idx];
-            return { id:now+i, name:it.name||'未命名', category:it.category||'景點', date:it.date||'待安排', time:it.time||'', note:it.note||'', createdAt:now+i, editedByName:user.displayName||user.email, editedById:user.uid };
-          });
-          const newIti = [...itinerary, ...newItems];
-          const newDates = [...new Set(newItems.map(it=>it.date).filter(d=>d&&d!=='待安排'))].sort();
-          const merged = [...new Set([...tripDates.filter(d=>d!=='待安排'), ...newDates, '待安排'])].sort();
-          const finalDates = [...merged.filter(d=>d!=='待安排'), '待安排'];
-          setItinerary(newIti); setTripDates(finalDates);
-          saveItinerary(newIti, finalDates);
-          setUploadModal({open:false});
-        };
-
-        const catColor = { '景點':C.green, '美食':C.warm, '購物':C.warm, '交通':C.purple, '住宿':C.blue, '其他':C.textMuted };
-
-        return (
-          <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-            <div onClick={()=>setUploadModal({open:false})} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
-            <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'88vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-                <div style={{ fontSize:17, fontWeight:800 }}>📋 智慧解析行程表</div>
-                <button onClick={()=>setUploadModal({open:false})} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
-              </div>
-
-              {!uParsed ? (<>
-                <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-                  {[['file','📎 上傳檔案'],['text','✏️ 貼上文字']].map(([m,label])=>(
-                    <button key={m} onClick={()=>setUMode(m)} style={{ flex:1, padding:'10px', borderRadius:10, border:`1.5px solid ${uMode===m?C.blue:C.border}`, backgroundColor:uMode===m?C.blueSoft:C.bg, color:uMode===m?C.blue:C.textMuted, fontWeight:700, fontSize:13, cursor:'pointer' }}>{label}</button>
-                  ))}
-                </div>
-                {uMode==='file' ? (
-                  <>
-                    <input type="file" accept="image/*,.pdf" onChange={handleFile} style={{ display:'none' }} id="iti-up"/>
-                    <label htmlFor="iti-up" style={{ display:'block', border:`2px dashed ${uFile?C.blue:C.border}`, borderRadius:16, padding:'36px 20px', textAlign:'center', cursor:'pointer', backgroundColor:uFile?C.blueSoft:'transparent' }}>
-                      {uFile ? (<>
-                        <div style={{ fontSize:36, marginBottom:8 }}>{uFileType==='image'?'🖼️':'📄'}</div>
-                        <div style={{ fontSize:14, fontWeight:700, color:C.blue }}>{uFile.name}</div>
-                        <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>點擊重新選擇</div>
-                      </>) : (<>
-                        <div style={{ fontSize:40, marginBottom:8 }}>📂</div>
-                        <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>點擊上傳圖片或 PDF</div>
-                        <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>截圖、拍照、PDF 都可以</div>
-                      </>)}
-                    </label>
-                  </>
-                ) : (
-                  <textarea style={{ ...gs.input, height:200, resize:'none', lineHeight:1.6 }}
-                    placeholder={'把行程文字貼在這裡，例如：\n6/20 10:00 淺草寺\n6/20 12:00 築地午餐\n6/21 成田機場回台灣'}
-                    value={uText} onChange={e=>setUText(e.target.value)}/>
-                )}
-                {uError && <div style={{ color:C.danger, fontSize:13, marginTop:10, textAlign:'center' }}>{uError}</div>}
-                <button onClick={handleParse} disabled={uLoading||(uMode==='file'?!uFileData:!uText.trim())}
-                  style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:700, cursor:'pointer', opacity:(uLoading||(uMode==='file'?!uFileData:!uText.trim()))?0.5:1 }}>
-                  {uLoading ? '⏳ AI 解析中...' : '✨ 開始解析'}
-                </button>
-              </>) : (<>
-                <div style={{ fontSize:13, color:C.textMuted, marginBottom:12 }}>
-                  解析到 <strong style={{ color:C.blue }}>{uParsed.length}</strong> 個項目，勾選要加入的：
-                </div>
-                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-                  {uParsed.map((item,i)=>{
-                    const sel=uSelected.includes(i);
-                    return (
-                      <div key={i} onClick={()=>setUSelected(s=>sel?s.filter(x=>x!==i):[...s,i])}
-                        style={{ padding:'10px 12px', borderRadius:12, border:`1.5px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blueSoft:C.bg, cursor:'pointer', display:'flex', gap:10, alignItems:'flex-start' }}>
-                        <div style={{ width:20, height:20, borderRadius:6, border:`2px solid ${sel?C.blue:C.border}`, backgroundColor:sel?C.blue:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:2 }}>
-                          {sel&&<span style={{ color:'#fff', fontSize:12, fontWeight:900 }}>✓</span>}
-                        </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
-                            <span style={{ fontSize:14, fontWeight:700 }}>{item.name}</span>
-                            <span style={{ fontSize:11, padding:'2px 7px', borderRadius:6, backgroundColor:(catColor[item.category]||C.textMuted)+'22', color:catColor[item.category]||C.textMuted, fontWeight:700 }}>{item.category||'其他'}</span>
-                          </div>
-                          {(item.date||item.time)&&<div style={{ fontSize:12, color:C.textMuted, marginTop:3 }}>
-                            {item.date&&<span>📅 {item.date}</span>}{item.date&&item.time&&' · '}{item.time&&<span>🕐 {item.time}</span>}
-                          </div>}
-                          {item.note&&<div style={{ fontSize:12, color:C.textMuted, marginTop:3, opacity:0.8 }}>{item.note}</div>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ display:'flex', gap:10 }}>
-                  <button onClick={()=>setUParsed(null)} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>↩ 重新解析</button>
-                  <button onClick={handleAdd} disabled={uSelected.length===0}
-                    style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer', opacity:uSelected.length===0?0.5:1 }}>
-                    加入行程（{uSelected.length} 項）
-                  </button>
-                </div>
-              </>)}
-            </div>
-          </div>
-        );
-      })()}
+      {uploadModal.open && <UploadItineraryModal
+        onClose={()=>setUploadModal({open:false})}
+        user={user} trip={trip} members={members}
+        itinerary={itinerary} tripDates={tripDates}
+        setItinerary={setItinerary} setTripDates={setTripDates}
+        saveItinerary={saveItinerary}
+      />}
       <ConfirmDialog isOpen={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => { confirmDel?.fn(); setConfirmDel(null); }} title={confirmDel?.title} message={confirmDel?.message} />
     </div>
   );
