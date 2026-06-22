@@ -1315,7 +1315,7 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
             <div onClick={()=>onClose()} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
             <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'88vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-                <div style={{ fontSize:17, fontWeight:800 }}>📋 智慧解析行程表</div>
+                <div style={{ fontSize:17, fontWeight:800 }}>📥 智能匯入行程</div>
                 <button onClick={()=>onClose()} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
               </div>
 
@@ -1400,6 +1400,11 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [members, setMembers] = useState([]);
   const [itinerary, setItinerary] = useState([]);
   const [tripDates, setTripDates] = useState(['待安排']);
+  const [transports, setTransports] = useState([]); // 航班/交通 {id,type:'flight'|'transport',label,date,time,from,to,code,note}
+  const [lodgings, setLodgings] = useState([]); // 住宿 {id,name,checkIn,checkOut,code,note}
+  const [transportModal, setTransportModal] = useState({ open:false, data:null });
+  const [lodgingModal, setLodgingModal] = useState({ open:false, data:null });
+  const [travelInfoOpen, setTravelInfoOpen] = useState(false); // 交通住宿管理面板
   const [selectedDate, setSelectedDate] = useState(()=>{
     const n=new Date();
     const today=`${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')}`;
@@ -1655,12 +1660,22 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div class="meta">${[trip.destinations,trip.startDate&&trip.endDate?`${trip.startDate} ～ ${trip.endDate}`:''].filter(Boolean).join('　|　')}</div>
       <div class="members">${members.map(m=>m.displayName).join('　·　')}</div>
     </div>
-    ${dayList.map((d,di)=>`
+    ${dayList.map((d,di)=>{
+      const toDate = s => { const [m,dd]=s.split('/').map(Number); return new Date(2000,m-1,dd); };
+      const sel = d!=='待安排' ? toDate(d) : null;
+      const dayFlights = transports.filter(t=>t.date===d);
+      const dayLodge = sel ? lodgings.filter(l=>{ if(!l.checkIn||!l.checkOut)return false; const ci=toDate(l.checkIn),co=toDate(l.checkOut); return sel>=ci&&sel<=co; }) : [];
+      const travelLine = [
+        ...dayFlights.map(t=>`${t.type==='flight'?'✈️':'🚄'} ${t.label||''} ${t.time||''} ${t.from?`${t.from}→${t.to}`:''} ${t.code||''}`.trim()),
+        ...dayLodge.map(l=>`🏨 ${l.name}${l.checkIn===d?'（入住）':l.checkOut===d?'（退房）':''}`),
+      ];
+      return `
       <div class="day-section">
         <div class="day-header">
           <span class="day-num">${d==='待安排'?'待安排':`DAY ${di+1}`}</span>
           <span class="day-date">${d}</span>
         </div>
+        ${travelLine.length?`<div style="background:#F7EFE4;border-left:3px solid #C68B5E;padding:10px 14px;margin-bottom:14px;border-radius:4px">${travelLine.map(x=>`<div style="font-size:13px;color:#6B5D4A;padding:2px 0">${x}</div>`).join('')}</div>`:''}
         <div class="timeline">
           ${byDay[d].map(it=>`
             <div class="stop">
@@ -1670,7 +1685,8 @@ function TripDetailScreen({ user, trip, onBack }) {
               ${it.note?`<div class="stop-note">${it.note}</div>`:''}
             </div>`).join('')}
         </div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
     ${foods.length?`<div class="block">
       <div class="block-title">想吃美食</div>
       <div class="food-grid">
@@ -1733,6 +1749,12 @@ function TripDetailScreen({ user, trip, onBack }) {
         if(d.dates) setTripDates(d.dates);
       }
     }));
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_transports`), snap => {
+      if(snap.exists()) setTransports(snap.data().items||[]);
+    }));
+    unsubs.push(onSnapshot(doc(db,"tripData",`${tid}_lodgings`), snap => {
+      if(snap.exists()) setLodgings(snap.data().items||[]);
+    }));
 
     return () => unsubs.forEach(u=>u());
   }, [trip.id, user.uid]);
@@ -1753,6 +1775,12 @@ function TripDetailScreen({ user, trip, onBack }) {
   }
   async function loadItinerary() {
     const s = await getDoc(doc(db,"tripData",`${trip.id}_itinerary`));
+    const [st, sl] = await Promise.all([
+      getDoc(doc(db,"tripData",`${trip.id}_transports`)),
+      getDoc(doc(db,"tripData",`${trip.id}_lodgings`)),
+    ]);
+    if(st.exists()) setTransports(st.data().items||[]);
+    if(sl.exists()) setLodgings(sl.data().items||[]);
     if (s.exists()) {
       const d=s.data();
       setItinerary(d.items||[]);
@@ -1771,6 +1799,14 @@ function TripDetailScreen({ user, trip, onBack }) {
   }
   async function saveItinerary(items, dates) {
     await setDoc(doc(db,"tripData",`${trip.id}_itinerary`), { items:JSON.parse(JSON.stringify(items)), dates, updatedAt:serverTimestamp() });
+  }
+  async function saveTransports(items) {
+    setTransports(items);
+    await setDoc(doc(db,"tripData",`${trip.id}_transports`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
+  }
+  async function saveLodgings(items) {
+    setLodgings(items);
+    await setDoc(doc(db,"tripData",`${trip.id}_lodgings`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
   }
   async function loadFood() {
     const s = await getDoc(doc(db,"tripData",`${trip.id}_food`));
@@ -2060,7 +2096,8 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
           <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>選擇日期</span>
           <div style={{ display:'flex', gap:6 }}>
-            <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📋 解析行程表</button>
+            <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>✈️🏨 交通住宿</button>
+            <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📥 智能匯入</button>
             <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 日期</button>
           </div>
         </div>
@@ -2075,6 +2112,47 @@ function TripDetailScreen({ user, trip, onBack }) {
       </div>
       {/* 行程列表 */}
       <div style={{ padding:16, flex:1 }}>
+        {/* 當天的交通住宿 */}
+        {selectedDate!=='待安排' && (() => {
+          const toDate = s => { const [m,d]=s.split('/').map(Number); return new Date(2000,m-1,d); };
+          const sel = toDate(selectedDate);
+          const dayFlights = transports.filter(t=>t.date===selectedDate);
+          const dayLodgings = lodgings.filter(l=>{
+            if(!l.checkIn||!l.checkOut) return false;
+            const ci=toDate(l.checkIn), co=toDate(l.checkOut);
+            return sel>=ci && sel<co; // 入住日到退房前一天
+          });
+          const checkoutToday = lodgings.filter(l=>l.checkOut===selectedDate);
+          if(dayFlights.length===0 && dayLodgings.length===0 && checkoutToday.length===0) return null;
+          return (
+            <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
+              {dayFlights.map(t=>(
+                <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
+                  <span style={{ fontSize:16 }}>{t.type==='flight'?'✈️':'🚄'}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:700 }}>{t.label||(t.type==='flight'?'航班':'交通')} {t.time||''}</div>
+                    {(t.from||t.to)&&<div style={{ fontSize:12, color:C.textMuted }}>{t.from} → {t.to} {t.code?`· ${t.code}`:''}</div>}
+                  </div>
+                </div>
+              ))}
+              {dayLodgings.map(l=>(
+                <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
+                  <span style={{ fontSize:16 }}>🏨</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:700 }}>{l.name} {l.checkIn===selectedDate&&<span style={{ fontSize:11, color:C.warm }}>（入住）</span>}</div>
+                    {l.code&&<div style={{ fontSize:12, color:C.textMuted }}>訂房編號 {l.code}</div>}
+                  </div>
+                </div>
+              ))}
+              {checkoutToday.map(l=>(
+                <div key={'co'+l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
+                  <span style={{ fontSize:16 }}>🧳</span>
+                  <div style={{ fontSize:13, fontWeight:700 }}>{l.name} <span style={{ fontSize:11, color:C.textMuted }}>（退房）</span></div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         {/* 當天連結的美食 */}
         {selectedDate!=='待安排' && foodItems.filter(f=>f.linkedDate===selectedDate).length>0 && (
           <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
@@ -4475,6 +4553,133 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
       {/* ─── 上傳行程表解析 Modal ─── */}
+      {/* ✈️🏨 交通住宿管理面板 */}
+      {travelInfoOpen && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div onClick={()=>setTravelInfoOpen(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+          <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'88vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              <div style={{ fontSize:17, fontWeight:800 }}>✈️🏨 交通與住宿</div>
+              <button onClick={()=>setTravelInfoOpen(false)} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
+            </div>
+
+            {/* 航班/交通 */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>✈️ 航班・交通</div>
+              <button onClick={()=>setTransportModal({open:true,data:null})} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 新增</button>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:24 }}>
+              {transports.length===0 ? <div style={{ fontSize:12, color:C.textMuted, padding:'8px 0' }}>尚未新增航班或交通</div> :
+                [...transports].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(t=>(
+                  <div key={t.id} style={{ ...gs.card, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+                    <span style={{ fontSize:20 }}>{t.type==='flight'?'✈️':'🚄'}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:700 }}>{t.label||'交通'} <span style={{ fontSize:12, color:C.textMuted, fontWeight:400 }}>{t.date} {t.time}</span></div>
+                      {(t.from||t.to)&&<div style={{ fontSize:12, color:C.textMuted }}>{t.from} → {t.to} {t.code?`· ${t.code}`:''}</div>}
+                    </div>
+                    <button onClick={()=>setTransportModal({open:true,data:t})} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
+                    <button onClick={()=>{ const n=transports.filter(x=>x.id!==t.id); saveTransports(n); }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:C.bg, color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
+                  </div>
+                ))}
+            </div>
+
+            {/* 住宿 */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>🏨 住宿</div>
+              <button onClick={()=>setLodgingModal({open:true,data:null})} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 新增</button>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {lodgings.length===0 ? <div style={{ fontSize:12, color:C.textMuted, padding:'8px 0' }}>尚未新增住宿</div> :
+                [...lodgings].sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||'')).map(l=>(
+                  <div key={l.id} style={{ ...gs.card, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+                    <span style={{ fontSize:20 }}>🏨</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:700 }}>{l.name}</div>
+                      <div style={{ fontSize:12, color:C.textMuted }}>{l.checkIn} ～ {l.checkOut} {l.code?`· ${l.code}`:''}</div>
+                    </div>
+                    <button onClick={()=>setLodgingModal({open:true,data:l})} style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
+                    <button onClick={()=>{ const n=lodgings.filter(x=>x.id!==l.id); saveLodgings(n); }} style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:C.bg, color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 航班/交通 新增編輯 */}
+      {transportModal.open && (() => {
+        const d = transportModal.data || { type:'flight', label:'', date:'', time:'', from:'', to:'', code:'', note:'' };
+        const set = (k,v)=>setTransportModal(p=>({...p,data:{...(p.data||d),[k]:v}}));
+        const cur = transportModal.data || d;
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+            <div onClick={()=>setTransportModal({open:false,data:null})} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+            <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:380, maxHeight:'85vh', overflowY:'auto', padding:24 }}>
+              <div style={{ fontSize:16, fontWeight:800, marginBottom:18 }}>{transportModal.data?'編輯':'新增'}航班・交通</div>
+              <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+                {[['flight','✈️ 航班'],['transport','🚄 其他交通']].map(([v,l])=>(
+                  <button key={v} onClick={()=>set('type',v)} style={{ flex:1, padding:'8px', borderRadius:10, border:`1.5px solid ${cur.type===v?C.warm:C.border}`, backgroundColor:cur.type===v?C.warmSoft:C.bg, color:cur.type===v?C.warm:C.textMuted, fontWeight:700, fontSize:13, cursor:'pointer' }}>{l}</button>
+                ))}
+              </div>
+              <input placeholder={cur.type==='flight'?'標題（去程/回程）':'標題（如：JR 特急）'} value={cur.label||''} onChange={e=>set('label',e.target.value)} style={{ ...gs.input, marginBottom:10 }}/>
+              <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                <input placeholder="日期 MM/DD" value={cur.date||''} onChange={e=>set('date',e.target.value)} style={{ ...gs.input, flex:1 }}/>
+                <input placeholder="時間 HH:MM" value={cur.time||''} onChange={e=>set('time',e.target.value)} style={{ ...gs.input, flex:1 }}/>
+              </div>
+              <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                <input placeholder="出發地" value={cur.from||''} onChange={e=>set('from',e.target.value)} style={{ ...gs.input, flex:1 }}/>
+                <input placeholder="目的地" value={cur.to||''} onChange={e=>set('to',e.target.value)} style={{ ...gs.input, flex:1 }}/>
+              </div>
+              <input placeholder="航班/車次編號（選填）" value={cur.code||''} onChange={e=>set('code',e.target.value)} style={{ ...gs.input, marginBottom:18 }}/>
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={()=>setTransportModal({open:false,data:null})} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontWeight:700, fontSize:14, cursor:'pointer' }}>取消</button>
+                <button onClick={()=>{
+                  if(!cur.label&&!cur.from) return;
+                  const item={ ...cur, id:cur.id||Date.now() };
+                  const n = cur.id ? transports.map(x=>x.id===cur.id?item:x) : [...transports,item];
+                  saveTransports(n); setTransportModal({open:false,data:null});
+                }} style={{ flex:2, padding:12, borderRadius:12, border:'none', backgroundColor:C.warm, color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer' }}>儲存</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 住宿 新增編輯 */}
+      {lodgingModal.open && (() => {
+        const d = lodgingModal.data || { name:'', checkIn:'', checkOut:'', code:'', note:'' };
+        const set = (k,v)=>setLodgingModal(p=>({...p,data:{...(p.data||d),[k]:v}}));
+        const cur = lodgingModal.data || d;
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+            <div onClick={()=>setLodgingModal({open:false,data:null})} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+            <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:380, padding:24 }}>
+              <div style={{ fontSize:16, fontWeight:800, marginBottom:18 }}>{lodgingModal.data?'編輯':'新增'}住宿</div>
+              <input placeholder="飯店名稱" value={cur.name||''} onChange={e=>set('name',e.target.value)} style={{ ...gs.input, marginBottom:10 }}/>
+              <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>入住日 MM/DD</div>
+                  <input placeholder="06/06" value={cur.checkIn||''} onChange={e=>set('checkIn',e.target.value)} style={{ ...gs.input, width:'100%' }}/>
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>退房日 MM/DD</div>
+                  <input placeholder="06/09" value={cur.checkOut||''} onChange={e=>set('checkOut',e.target.value)} style={{ ...gs.input, width:'100%' }}/>
+                </div>
+              </div>
+              <input placeholder="訂房編號（選填）" value={cur.code||''} onChange={e=>set('code',e.target.value)} style={{ ...gs.input, marginBottom:18 }}/>
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={()=>setLodgingModal({open:false,data:null})} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontWeight:700, fontSize:14, cursor:'pointer' }}>取消</button>
+                <button onClick={()=>{
+                  if(!cur.name||!cur.checkIn||!cur.checkOut) return;
+                  const item={ ...cur, id:cur.id||Date.now() };
+                  const n = cur.id ? lodgings.map(x=>x.id===cur.id?item:x) : [...lodgings,item];
+                  saveLodgings(n); setLodgingModal({open:false,data:null});
+                }} style={{ flex:2, padding:12, borderRadius:12, border:'none', backgroundColor:C.warm, color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer' }}>儲存</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {uploadModal.open && <UploadItineraryModal
         onClose={()=>setUploadModal({open:false})}
         user={user} trip={trip} members={members}
