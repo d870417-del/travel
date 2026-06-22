@@ -1920,13 +1920,12 @@ function TripDetailScreen({ user, trip, onBack }) {
       { id:'food', emoji:'🍜', label:'美食' },
       { id:'wallet', emoji:'💰', label:'帳務' },
       { id:'shopping', emoji:'🛍', label:'購物' },
-      { id:'memo', emoji:'📝', label:'備忘' },
       { id:'more', emoji:'⋯', label:'更多' },
     ];
     return (
       <div style={{ display:'flex', borderTop:`1px solid ${C.border}`, backgroundColor:C.surface, flexShrink:0, paddingBottom:24 }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); if(t.id!=='more'&&t.id!=='memo') setMoreSection(null); }}
+          <button key={t.id} onClick={() => { setTab(t.id); if(t.id!=='more') setMoreSection(null); }}
             style={{ flex:1, padding:'10px 4px 6px', border:'none', backgroundColor:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
             <span style={{ fontSize:22 }}>{t.emoji}</span>
             <span style={{ fontSize:10, fontWeight:700, color:tab===t.id?color:C.textMuted }}>{t.label}</span>
@@ -3188,36 +3187,16 @@ function TripDetailScreen({ user, trip, onBack }) {
       );
     }
 
-    // ── 備忘主頁（共用 / 個人 選擇）──
-    const rowCard = { ...gs.card, cursor:'pointer', textAlign:'left', padding:'16px 18px', display:'flex', alignItems:'center', gap:16 };
-    return (
-      <div style={{ flex:1, overflowY:'auto', padding:20 }}>
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <button onClick={()=>setMoreSection('shared-memo')} style={{ ...rowCard, border:`1.5px solid ${C.blue}22`, background:C.blueSoft }}>
-            <div style={{ fontSize:30 }}>📋</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>共用備忘錄</div>
-              <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{sharedMemos.length} 則・所有成員可見</div>
-            </div>
-            <div style={{ color:C.blue, fontSize:18 }}>›</div>
-          </button>
-          <button onClick={()=>setMoreSection('personal-memo')} style={{ ...rowCard, border:`1.5px solid ${C.green}22`, background:C.greenSoft }}>
-            <div style={{ fontSize:30 }}>🗒</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:15, fontWeight:800, color:C.green }}>個人備忘錄</div>
-              <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{personalMemos.length} 則・只有你看得到</div>
-            </div>
-            <div style={{ color:C.green, fontSize:18 }}>›</div>
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   };
 
   // ════════════════════════════════════════
   // 更多 Tab
   // ════════════════════════════════════════
   const MoreTab = () => {
+
+    // 備忘錄詳情委派給 MemoTab 渲染
+    if (moreSection==='shared-memo' || moreSection==='personal-memo') return MemoTab();
 
     if (moreSection==='members') {
       const isAdmin = members.find(m=>m.uid===user.uid)?.role==='admin';
@@ -4200,7 +4179,6 @@ function TripDetailScreen({ user, trip, onBack }) {
       {tab==='food' && FoodTab()}
       {tab==='wallet' && WalletTab()}
       {tab==='shopping' && ShoppingTab()}
-      {tab==='memo' && MemoTab()}
       {tab==='more' && MoreTab()}
       {TabBar()}
 
