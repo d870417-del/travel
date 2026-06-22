@@ -2448,16 +2448,16 @@ function TripDetailScreen({ user, trip, onBack }) {
                   const iAmFrom = g.from===user.uid;
                   const iAmTo = g.to===user.uid;
                   return (
-                    <div key={gi} style={{ ...gs.card, padding:'16px', backgroundColor:iAmTo?C.greenSoft:iAmFrom?C.dangerSoft:C.surface }}>
+                    <div key={gi} style={{ ...gs.card, padding:'16px', backgroundColor:C.surface }}>
                       {/* 誰欠誰 */}
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                         <div style={{ fontSize:15, fontWeight:800 }}>
-                          <span style={{ color:iAmFrom?C.danger:C.text }}>{iAmFrom?'我':fromM.displayName}</span>
+                          <span style={{ color:C.text }}>{iAmFrom?'我':fromM.displayName}</span>
                           <span style={{ color:C.textMuted, margin:'0 8px' }}>→</span>
-                          <span style={{ color:iAmTo?C.green:C.text }}>{iAmTo?'我':toM.displayName}</span>
+                          <span style={{ color:C.text }}>{iAmTo?'我':toM.displayName}</span>
                         </div>
                         {(iAmFrom||iAmTo) && (
-                          <div style={{ marginLeft:'auto', fontSize:11, fontWeight:700, color:iAmTo?C.green:C.danger, padding:'3px 8px', borderRadius:6, border:`1px solid ${iAmTo?C.green:C.danger}33` }}>
+                          <div style={{ marginLeft:'auto', fontSize:11, fontWeight:700, color:iAmFrom?C.danger:C.textMuted, padding:'3px 8px', borderRadius:6, border:`1px solid ${iAmFrom?C.danger:C.border}`, backgroundColor:iAmFrom?C.dangerSoft:'transparent' }}>
                             {iAmTo?'待收款':'待還款'}
                           </div>
                         )}
@@ -2509,9 +2509,9 @@ function TripDetailScreen({ user, trip, onBack }) {
                             });
                           };
                           return (
-                            <div key={ti} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', backgroundColor:'rgba(255,255,255,0.5)', borderRadius:10 }}>
+                            <div key={ti} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', backgroundColor:C.bg, borderRadius:10 }}>
                               <div style={{ flex:1 }}>
-                                <div style={{ fontSize:16, fontWeight:800, color:iAmTo?C.green:iAmFrom?C.danger:C.text }}>
+                                <div style={{ fontSize:16, fontWeight:800, color:iAmFrom?C.danger:C.text }}>
                                   {SYM[t.currency]||''}{t.amount.toLocaleString()} {t.currency}
                                 </div>
                                 <div style={{ fontSize:10, color:C.textMuted }}>≈ NT${toTWD(t.amount,t.currency).toLocaleString()}</div>
@@ -2522,7 +2522,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                                 } else {
                                   setSettleCurrencyPrompt({amount:t.amount, currency:t.currency, twdAmount:toTWD(t.amount,t.currency), onChoose:(a,c)=>settleOne(a,c)});
                                 }
-                              }} style={{ padding:'7px 14px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+                              }} style={{ padding:'7px 14px', borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.text, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
                                 結清
                               </button>
                             </div>
@@ -2570,7 +2570,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           });
                           setSplitRecords(newRecords); saveSplitRecords(newRecords);
                           const np=[...personalWalletItems,...newEntries]; setPersonalWalletItems(np); savePersonalWallet(np);
-                        }})} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                        }})} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.text, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                           ✓ 全部結清
                         </button>
                       )}
@@ -2616,7 +2616,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                             } else {
                               setSettleCurrencyPrompt({amount:t3.amount,currency:t3.currency,twdAmount:toTWD(t3.amount,t3.currency),onChoose:(a,c)=>doSettle3(a,c)});
                             }
-                          }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.green}`, backgroundColor:C.greenSoft, color:C.green, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                          }} style={{ width:'100%', marginTop:10, padding:'9px', borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.surface, color:C.text, fontSize:13, fontWeight:700, cursor:'pointer' }}>
                             ✓ 標記結清
                           </button>
                         );
