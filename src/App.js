@@ -1924,12 +1924,13 @@ function TripDetailScreen({ user, trip, onBack }) {
       { id:'food', emoji:'🍜', label:'美食' },
       { id:'wallet', emoji:'💰', label:'帳務' },
       { id:'shopping', emoji:'🛍', label:'購物' },
+      { id:'memo', emoji:'📝', label:'備忘' },
       { id:'more', emoji:'⋯', label:'更多' },
     ];
     return (
       <div style={{ display:'flex', borderTop:`1px solid ${C.border}`, backgroundColor:C.surface, flexShrink:0, paddingBottom:24 }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); if(t.id!=='more') setMoreSection(null); }}
+          <button key={t.id} onClick={() => { setTab(t.id); if(t.id!=='more'&&t.id!=='memo') setMoreSection(null); }}
             style={{ flex:1, padding:'10px 4px 6px', border:'none', backgroundColor:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
             <span style={{ fontSize:22 }}>{t.emoji}</span>
             <span style={{ fontSize:10, fontWeight:700, color:tab===t.id?color:C.textMuted }}>{t.label}</span>
@@ -3124,23 +3125,23 @@ function TripDetailScreen({ user, trip, onBack }) {
   };
 
   // ════════════════════════════════════════
-  // 更多 Tab
+  // 備忘 Tab
   // ════════════════════════════════════════
-  const MoreTab = () => {
+  const MemoTab = () => {
     const memoItems = moreSection==='shared-memo' ? sharedMemos : personalMemos;
     const setMemoItems = moreSection==='shared-memo'
       ? (fn) => { const n=typeof fn==='function'?fn(sharedMemos):fn; setSharedMemos(n); saveSharedMemos(n); }
       : (fn) => { const n=typeof fn==='function'?fn(personalMemos):fn; setPersonalMemos(n); savePersonalMemos(n); };
 
-    // ── 備忘錄詳情（單則）──
+    // ── 備忘錄詳情（單則列表）──
     if (moreSection==='shared-memo' || moreSection==='personal-memo') {
       const isShared = moreSection==='shared-memo';
       const sorted = [...memoItems].sort((a,b)=>(b.createdAtMs||0)-(a.createdAtMs||0));
       return (
         <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
-          <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:30 }}>
             <button onClick={() => setMoreSection(null)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
-            <div style={{ fontSize:15, fontWeight:800 }}>{isShared?'共用備忘錄':'個人備忘錄'}</div>
+            <div style={{ fontSize:15, fontWeight:800 }}>{isShared?'📋 共用備忘錄':'🗒 個人備忘錄'}</div>
           </div>
           <div style={{ padding:16, flex:1 }}>
             {sorted.length===0 ? (
@@ -3157,48 +3158,70 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                       <div style={{ display:'flex', gap:6 }}>
                         <button onClick={() => { setMemoModal({open:true, data:memo, scope:moreSection}); setMemoPhoto(memo.photo||null); }}
-                          style={{ padding:'5px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>✏️</button>
-                        <button onClick={() => setConfirmDel({title:'刪除備忘錄',message:'確定刪除這則備忘錄？',fn:()=>setMemoItems(p=>p.filter(m=>m.id!==memo.id))})}
-                          style={{ padding:'5px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'#FDE8E8', color:C.danger, fontSize:12, cursor:'pointer' }}>×</button>
+                          style={{ padding:'4px 8px', border:`1px solid ${C.border}`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.textMuted, fontSize:11, cursor:'pointer' }}>✏️</button>
+                        <button onClick={() => setConfirmDel({title:'刪除備忘錄',message:`確定刪除「${memo.title||'未命名'}」？`,fn:()=>setMemoItems(p=>p.filter(m=>m.id!==memo.id))})}
+                          style={{ padding:'4px 8px', border:`1px solid ${C.danger}33`, borderRadius:8, backgroundColor:'rgba(255,255,255,0.8)', color:C.danger, fontSize:11, cursor:'pointer' }}>×</button>
                       </div>
                     </div>
-                    {memo.photo && <img src={memo.photo} style={{ width:'100%', height:160, objectFit:'cover', borderRadius:12, marginBottom:10 }} alt="memo" />}
-                    {memo.type==='checklist' ? (
-                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                        {(memo.items||[]).map((item,ii) => (
-                          <div key={item.id||ii} style={{ display:'flex', alignItems:'center', gap:10 }}>
-                            <button onClick={() => {
-                              const now = new Date();
-                              const ts = `${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}`;
-                              const newItems = (memo.items||[]).map((x,xi)=>xi===ii?{...x,done:!x.done,doneAt:!x.done?ts:null}:x);
-                              setMemoItems(p=>p.map(m=>m.id===memo.id?{...m,items:newItems}:m));
-                            }} style={{ width:24, height:24, borderRadius:6, border:`2px solid ${item.done?C.green:C.border}`, backgroundColor:item.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
-                              {item.done && <span style={{ color:'#fff', fontSize:12, fontWeight:800 }}>✓</span>}
-                            </button>
-                            <div style={{ flex:1 }}>
-                              <span style={{ fontSize:14, color:item.done?C.textMuted:C.text, textDecoration:item.done?'line-through':'none' }}>{item.text}</span>
-                              {item.done && item.doneAt && <div style={{ fontSize:10, color:C.textMuted, marginTop:2 }}>✓ {item.doneAt}</div>}
+                    {memo.title && <div style={{ fontSize:15, fontWeight:800, marginBottom:6 }}>{memo.title}</div>}
+                    {memo.photo && <img src={memo.photo} style={{ width:'100%', borderRadius:10, marginBottom:8, maxHeight:200, objectFit:'cover' }} alt="memo" />}
+                    {memo.type==='text' && memo.content && <div style={{ fontSize:13, color:C.text, whiteSpace:'pre-wrap', lineHeight:1.6 }}>{memo.content}</div>}
+                    {memo.type==='checklist' && (
+                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                        {(memo.items||[]).map((it,idx) => (
+                          <div key={idx} onClick={()=>{
+                            setMemoItems(p=>p.map(m=>m.id===memo.id?{...m,items:m.items.map((x,j)=>j===idx?{...x,done:!x.done,doneAt:!x.done?new Date().toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):null}:x)}:m));
+                          }} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                            <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${it.done?C.green:C.border}`, backgroundColor:it.done?C.green:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                              {it.done && <span style={{ color:'#fff', fontSize:11, fontWeight:900 }}>✓</span>}
                             </div>
+                            <span style={{ fontSize:13, flex:1, textDecoration:it.done?'line-through':'none', color:it.done?C.textMuted:C.text }}>{it.text}</span>
+                            {it.done && it.doneAt && <span style={{ fontSize:10, color:C.textMuted }}>{it.doneAt}</span>}
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      memo.content && <div style={{ fontSize:14, color:C.text, whiteSpace:'pre-wrap', lineHeight:1.7 }}>{memo.content}</div>
                     )}
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:C.textMuted, paddingTop:10, marginTop:10, borderTop:`1px solid ${C.border}` }}>
-                      <span>{new Date(memo.createdAtMs||0).toLocaleDateString('zh-TW')}</span>
-                      <span>{memo.editedByName||'成員'} 記</span>
-                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
           <button onClick={() => { setMemoModal({open:true, data:{type:'text', title:'', content:'', items:[], photo:null}, scope:moreSection}); setMemoPhoto(null); }}
-            style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.blue},${C.purple})`, color:'#fff', fontSize:26, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+            style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(42,143,165,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
         </div>
       );
     }
+
+    // ── 備忘主頁（共用 / 個人 選擇）──
+    const rowCard = { ...gs.card, cursor:'pointer', textAlign:'left', padding:'16px 18px', display:'flex', alignItems:'center', gap:16 };
+    return (
+      <div style={{ flex:1, overflowY:'auto', padding:20 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <button onClick={()=>setMoreSection('shared-memo')} style={{ ...rowCard, border:`1.5px solid ${C.blue}22`, background:C.blueSoft }}>
+            <div style={{ fontSize:30 }}>📋</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>共用備忘錄</div>
+              <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{sharedMemos.length} 則・所有成員可見</div>
+            </div>
+            <div style={{ color:C.blue, fontSize:18 }}>›</div>
+          </button>
+          <button onClick={()=>setMoreSection('personal-memo')} style={{ ...rowCard, border:`1.5px solid ${C.green}22`, background:C.greenSoft }}>
+            <div style={{ fontSize:30 }}>🗒</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:800, color:C.green }}>個人備忘錄</div>
+              <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{personalMemos.length} 則・只有你看得到</div>
+            </div>
+            <div style={{ color:C.green, fontSize:18 }}>›</div>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ════════════════════════════════════════
+  // 更多 Tab
+  // ════════════════════════════════════════
+  const MoreTab = () => {
 
     if (moreSection==='members') {
       const isAdmin = members.find(m=>m.uid===user.uid)?.role==='admin';
@@ -4181,6 +4204,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       {tab==='food' && FoodTab()}
       {tab==='wallet' && WalletTab()}
       {tab==='shopping' && ShoppingTab()}
+      {tab==='memo' && MemoTab()}
       {tab==='more' && MoreTab()}
       {TabBar()}
 
