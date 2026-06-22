@@ -1443,26 +1443,22 @@ function TripDetailScreen({ user, trip, onBack }) {
     document.head.appendChild(s);
   });
 
-  const openPrint = (html) => {
-    // 用隱藏 iframe 列印，避免手機開新分頁卡住主頁面
-    const existing = document.getElementById('__print_frame');
-    if (existing) existing.remove();
-    const iframe = document.createElement('iframe');
-    iframe.id = '__print_frame';
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-    document.body.appendChild(iframe);
-    const idoc = iframe.contentWindow.document;
-    idoc.open(); idoc.write(html); idoc.close();
-    const cleanup = () => { setTimeout(() => { const f=document.getElementById('__print_frame'); if(f) f.remove(); }, 300); };
-    setTimeout(() => {
-      try {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.onafterprint = cleanup;
-        iframe.contentWindow.print();
-      } catch(e) { cleanup(); }
-      // 保險：若 onafterprint 沒觸發，10 秒後仍清除
-      setTimeout(cleanup, 10000);
-    }, 400);
+  const openPrint = (html, filename='下載') => {
+    // 手機列印對話框會卡住主頁面，改成直接下載 HTML 檔（可在瀏覽器開啟後列印或存 PDF）
+    try {
+      const blob = new Blob([html], { type:'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.html`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+    } catch(e) {
+      // 後備：開新分頁顯示
+      const w = window.open('', '_blank');
+      if(w){ w.document.write(html); w.document.close(); }
+    }
   };
 
   const catIcon = {'景點':'🏛','美食':'🍜','購物':'🛍','交通':'🚌','住宿':'🏨','其他':'📌'};
@@ -1509,7 +1505,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>`).join('')}
       </div>`).join('')}
     </body></html>`;
-    openPrint(html);
+    openPrint(html, `${trip.name}_行程表`);
     setDownloading(null);
   };
 
@@ -1599,7 +1595,7 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div class="exp-box"><div class="exp-val">${expStr}</div><div style="font-size:12px;color:#3DAD8A;margin-top:4px">${walletItems.filter(i=>i.type==='支出').length} 筆消費</div></div>
     </div>`:''}
     </body></html>`;
-    openPrint(html);
+    openPrint(html, `${trip.name}_旅程總覽`);
     setDownloading(null);
   };
 
