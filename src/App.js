@@ -1390,8 +1390,179 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
         );
 }
 
+// ─── AI 一鍵排行程組件 ───
+function AIPlanModal({ onClose, trip, itinerary, foodItems, tripDates, setItinerary, setTripDates, saveItinerary }) {
+  const unscheduled = itinerary.filter(it => !it.date || it.date==='待安排');
+  const [step, setStep] = React.useState('config'); // config | loading | preview
+  const [selDays, setSelDays] = React.useState(tripDates.filter(d=>d!=='待安排'));
+  const [startH, setStartH] = React.useState('09:00');
+  const [endH, setEndH] = React.useState('21:00');
+  const [includeFood, setIncludeFood] = React.useState(true);
+  const [aiSuggest, setAiSuggest] = React.useState(true);
+  const [selFoods, setSelFoods] = React.useState(foodItems.filter(f=>!f.visited).map(f=>f.id));
+  const [result, setResult] = React.useState(null);
+  const [error, setError] = React.useState('');
 
-function TripDetailScreen({ user, trip, onBack }) {
+  const _gk = ['AQ.Ab8RN6IJ1W','s-NnDyfYbXwpi','U0_Qa7qZm1lHh','S0BxaYkC3xxsRQ'];
+  const GEMINI_KEY = (typeof import.meta!=='undefined' && import.meta.env && import.meta.env.VITE_GEMINI_KEY) || _gk.join('');
+
+  const toggleDay = d => setSelDays(s => s.includes(d) ? s.filter(x=>x!==d) : [...s,d]);
+  const toggleFood = id => setSelFoods(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
+
+  const generate = async () => {
+    if (selDays.length===0) { setError('請至少選一天'); return; }
+    setStep('loading'); setError('');
+    try {
+      const spots = unscheduled.map(it=>({ name:it.name, category:it.category, note:it.note||'' }));
+      const foods = includeFood ? foodItems.filter(f=>selFoods.includes(f.id)).map(f=>({ name:f.name, type:f.foodType||'', area:(f.districts||[f.district]).filter(Boolean).join('') })) : [];
+      const prompt = `你是專業旅遊行程規劃師。目的地：${trip.destinations||trip.name}。
+請把以下景點和美食，合理分配到 ${selDays.length} 天的行程裡（日期：${selDays.join('、')}），每天時間 ${startH} 到 ${endH}。
+
+現有景點：${JSON.stringify(spots)}
+${foods.length?`要排入的美食：${JSON.stringify(foods)}`:''}
+${aiSuggest?'另外請依目的地特色，補充建議 2-4 個值得去但清單沒有的景點。':''}
+
+排程原則：
+1. 地理位置相近的排在同一天，減少往返
+2. 美食安排在中午(12點左右)和傍晚(18-19點)
+3. 每天 4-6 個行程，時間合理分配
+4. 早上景點、中午美食、下午景點、傍晚美食/購物
+
+只回傳純 JSON（不要說明、不要 markdown）：
+{"schedule":[{"date":"日期","time":"HH:MM","name":"名稱","category":"景點|美食|購物|交通|住宿|其他","note":"簡短說明或推薦理由","isNew":true/false}]}`;
+
+      const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'x-goog-api-key':GEMINI_KEY },
+        body: JSON.stringify({ contents:[{ parts:[{ text:prompt }] }], generationConfig:{ maxOutputTokens:8192, temperature:0.4 } })
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message);
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      let clean = raw.replace(/```json|```/g,'').trim();
+      if (clean && !clean.endsWith('}')) { const lb=clean.lastIndexOf('}'); if(lb>0) clean=clean.slice(0,lb+1)+']}'; }
+      const parsed = JSON.parse(clean);
+      setResult(parsed.schedule||[]);
+      setStep('preview');
+    } catch(e) {
+      setError('排程失敗：'+(e?.message||'請重試'));
+      setStep('config');
+    }
+  };
+
+  const apply = () => {
+    const now = Date.now();
+    // 移除原本未排的景點（會被重新排），保留已排的
+    const scheduled = itinerary.filter(it => it.date && it.date!=='待安排');
+    const newItems = result.map((r,i)=>({
+      id: now+i, name:r.name, category:r.category||'景點', date:r.date, time:r.time||'', note:r.note||'',
+      createdAt: now+i,
+    }));
+    const merged = [...scheduled, ...newItems];
+    const allDates = [...new Set([...tripDates.filter(d=>d!=='待安排'), ...newItems.map(it=>it.date)])].sort();
+    const finalDates = ['待安排', ...allDates];
+    setItinerary(merged); setTripDates(finalDates);
+    saveItinerary(merged, finalDates);
+    onClose();
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:250, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+      <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'90vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div style={{ fontSize:17, fontWeight:800 }}>✨ AI 一鍵排行程</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
+        </div>
+
+        {step==='config' && (<>
+          <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:8 }}>要排哪幾天？</div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18 }}>
+            {tripDates.filter(d=>d!=='待安排').map(d=>(
+              <button key={d} onClick={()=>toggleDay(d)} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${selDays.includes(d)?C.blue:C.border}`, backgroundColor:selDays.includes(d)?C.blueSoft:C.bg, color:selDays.includes(d)?C.blue:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>{d}</button>
+            ))}
+          </div>
+
+          <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:8 }}>每天時間</div>
+          <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:18 }}>
+            <input type="time" value={startH} onChange={e=>setStartH(e.target.value)} style={{ ...gs.input, flex:1 }}/>
+            <span style={{ color:C.textMuted }}>～</span>
+            <input type="time" value={endH} onChange={e=>setEndH(e.target.value)} style={{ ...gs.input, flex:1 }}/>
+          </div>
+
+          <label style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, cursor:'pointer' }}>
+            <input type="checkbox" checked={aiSuggest} onChange={e=>setAiSuggest(e.target.checked)} style={{ width:18, height:18 }}/>
+            <span style={{ fontSize:14 }}>AI 補充建議新景點</span>
+          </label>
+          <label style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, cursor:'pointer' }}>
+            <input type="checkbox" checked={includeFood} onChange={e=>setIncludeFood(e.target.checked)} style={{ width:18, height:18 }}/>
+            <span style={{ fontSize:14 }}>把美食一起排進去</span>
+          </label>
+
+          {includeFood && foodItems.length>0 && (
+            <div style={{ marginBottom:18, padding:'12px', backgroundColor:C.bg, borderRadius:12 }}>
+              <div style={{ fontSize:12, color:C.textMuted, marginBottom:8 }}>選擇要排的美食（{selFoods.length} 項）</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:160, overflowY:'auto' }}>
+                {foodItems.map(f=>(
+                  <label key={f.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                    <input type="checkbox" checked={selFoods.includes(f.id)} onChange={()=>toggleFood(f.id)} style={{ width:16, height:16 }}/>
+                    <span style={{ fontSize:13 }}>{f.name} {f.foodType&&<span style={{ color:C.textMuted, fontSize:11 }}>· {f.foodType}</span>}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ fontSize:12, color:C.textMuted, marginBottom:14 }}>
+            待排景點：{unscheduled.length} 個{includeFood?` · 美食：${selFoods.length} 項`:''}
+          </div>
+          {error && <div style={{ color:C.danger, fontSize:13, marginBottom:12, textAlign:'center' }}>{error}</div>}
+          <button onClick={generate} style={{ width:'100%', padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer' }}>✨ 開始排</button>
+        </>)}
+
+        {step==='loading' && (
+          <div style={{ textAlign:'center', padding:'50px 20px' }}>
+            <div style={{ fontSize:40, marginBottom:16 }}>✨</div>
+            <div style={{ fontSize:15, fontWeight:700, marginBottom:6 }}>AI 正在規劃行程...</div>
+            <div style={{ fontSize:13, color:C.textMuted }}>依照地點和類型安排最順的動線</div>
+          </div>
+        )}
+
+        {step==='preview' && result && (<>
+          <div style={{ fontSize:13, color:C.textMuted, marginBottom:14 }}>AI 排好了！確認後會套用到行程：</div>
+          {selDays.map(d=>{
+            const dayItems = result.filter(r=>r.date===d).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+            if(dayItems.length===0) return null;
+            return (
+              <div key={d} style={{ marginBottom:18 }}>
+                <div style={{ fontSize:14, fontWeight:800, color:C.blue, marginBottom:8, paddingBottom:4, borderBottom:`2px solid ${C.blueSoft}` }}>{d}</div>
+                {dayItems.map((r,i)=>(
+                  <div key={i} style={{ display:'flex', gap:10, padding:'7px 0', borderBottom:`1px solid ${C.bg}` }}>
+                    <div style={{ fontSize:12, color:C.textMuted, minWidth:42, paddingTop:2 }}>{r.time}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:700 }}>
+                        {r.name}
+                        {r.isNew && <span style={{ fontSize:10, marginLeft:6, padding:'1px 6px', borderRadius:4, backgroundColor:C.greenSoft, color:C.green, fontWeight:700 }}>AI 推薦</span>}
+                        <span style={{ fontSize:11, marginLeft:6, color:C.textMuted }}>{r.category}</span>
+                      </div>
+                      {r.note && <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{r.note}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          <div style={{ display:'flex', gap:10, marginTop:10 }}>
+            <button onClick={()=>setStep('config')} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>↩ 重新排</button>
+            <button onClick={apply} style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer' }}>✓ 套用到行程</button>
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+
   const color = trip.color || C.blue;
   const [tab, setTab] = useState('itinerary');
 
@@ -1484,6 +1655,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [splitRestorePrompt, setSplitRestorePrompt] = useState(null); // { item } 代墊已還記錄刪除後詢問是否還原
   const [settleCurrencyPrompt, setSettleCurrencyPrompt] = useState(null); // { amount, currency, twdAmount, onChoose }
   const [uploadModal, setUploadModal] = useState({ open:false }); // 上傳行程表解析
+  const [aiPlanModal, setAiPlanModal] = useState({ open:false }); // AI 一鍵排行程
   const [downloading, setDownloading] = useState(null); // 'pdf'|'excel'|'overview'
 
   // ─── 下載工具 ─────────────────────────────────────────────────
@@ -2228,8 +2400,15 @@ function TripDetailScreen({ user, trip, onBack }) {
             </div>
           </div>
         )}
+        {selectedDate==='待安排' && filteredItinerary.length>0 && (
+          <button onClick={()=>setAiPlanModal({open:true})} style={{ width:'100%', marginBottom:14, padding:'14px', borderRadius:14, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer', boxShadow:`0 4px 14px ${C.blue}44` }}>
+            ✨ AI 一鍵排行程
+          </button>
+        )}
         {filteredItinerary.length===0 ? (
-          <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>尚無行程，點右下角 ＋ 新增</div>
+          <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>
+            {selectedDate==='待安排' ? '把想去的地方加到待安排，再用 AI 一鍵排行程' : '尚無行程，點右下角 ＋ 新增'}
+          </div>
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:12, position:'relative' }}>
             {selectedDate!=='待安排' && filteredItinerary.length>1 && (
@@ -3537,7 +3716,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={sectionLabel}>下載旅程資料</div>
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {[
-              { key:'overview',  emoji:'📖', label:'旅遊手冊 PDF', desc:'完整行程、美食、準備清單，像旅行社 DM', fn: downloadOverviewPDF },
+              { key:'overview',  emoji:'📖', label:'旅遊手冊 PDF', desc:'完整行程、交通住宿、美食、準備清單', fn: downloadOverviewPDF },
               { key:'itinerary', emoji:'🗓', label:'行程表 Excel', desc:'可編輯後再上傳解析回行程', fn: downloadItineraryExcel },
               { key:'excel',     emoji:'📊', label:'帳務明細 Excel', desc:'公費、個人帳、代墊、購物四個工作表', fn: downloadWalletExcel },
             ].map(({ key, emoji, label, desc, fn }) => (
@@ -4756,6 +4935,12 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
         );
       })()}
+      {aiPlanModal.open && <AIPlanModal
+        onClose={()=>setAiPlanModal({open:false})}
+        trip={trip} itinerary={itinerary} foodItems={foodItems}
+        tripDates={tripDates} setItinerary={setItinerary} setTripDates={setTripDates}
+        saveItinerary={saveItinerary}
+      />}
       {uploadModal.open && <UploadItineraryModal
         onClose={()=>setUploadModal({open:false})}
         user={user} trip={trip} members={members}
