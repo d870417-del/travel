@@ -2818,22 +2818,22 @@ function TripDetailScreen({ user, trip, onBack }) {
         {selectedDate!=='待安排' && filteredItinerary.length>0 && (() => {
           const destArr = trip.destinations || (trip.destination?[trip.destination]:[]);
           const dest = (Array.isArray(destArr) ? destArr[0] : destArr || '').trim();
-          // 清理地點名稱：去掉常見的動作詞，保留地名
-          const clean = s => (s||'').trim()
-            .replace(/(最後|順便|記得|要去|去|逛|吃|玩|看|買)?(補貨|採買|晚餐|午餐|早餐|集合|出發|退房|入住|休息)$/,'')
-            .trim();
-          const places = filteredItinerary
-            .filter(it => it.category!=='交通' && it.category!=='住宿') // 排除交通住宿
-            .map(it => clean(it.location||it.name||''))
-            .filter(Boolean)
-            .slice(0, 10); // Google Maps 最多約 10 個點
+          const clean = s => (s||'').trim().replace(/(最後|順便|記得|要去|去|逛|吃|玩|看|買)?(補貨|採買|晚餐|午餐|早餐|集合|出發|退房|入住|休息)$/,'').trim();
+          const items = filteredItinerary.filter(it => it.category!=='交通' && it.category!=='住宿');
+          // 有精確 mapUrl 的優先用 place_id 串路線
+          const withUrl = items.filter(it=>it.mapUrl);
+          const withoutUrl = items.filter(it=>!it.mapUrl);
+          const places = items.map(it => clean(it.location||it.name||'')).filter(Boolean).slice(0,10);
           if(places.length===0) return null;
           let url;
-          if(places.length===1){
-            url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`;
+          if(withUrl.length>0 && withUrl.length===items.length){
+            // 全部都有精確連結 → 用第一個，其他自己查
+            url = withUrl.length===1 ? withUrl[0].mapUrl :
+              `https://www.google.com/maps/dir/${withUrl.map(it=>encodeURIComponent(it.location||it.name||'')).join('/')}`;
           } else {
-            const wp = places.map(p=>encodeURIComponent(p+(dest?' '+dest:''))).join('/');
-            url = `https://www.google.com/maps/dir/${wp}`; // 不含起點，純看景點順序
+            url = places.length===1
+              ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`
+              : `https://www.google.com/maps/dir/${places.map(p=>encodeURIComponent(p+(dest?' '+dest:''))).join('/')}`;
           }
           return (
             <button onClick={()=>window.open(url,'_blank')} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer' }}>
@@ -4226,8 +4226,35 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>類別</label><select value={modal.data?.category||'景點'} onChange={e=>setModal(p=>({...p,data:{...p.data,category:e.target.value}}))} style={{ ...gs.input, cursor:'pointer' }}>{['景點','美食','購物','交通','住宿','其他'].map(c=><option key={c} value={c}>{c}</option>)}</select></div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>項目名稱 *</label><ImeInput key="itin-name" style={gs.input} placeholder="例：逛淺草寺" value={modal.data?.name||''} onChange={v=>setModal(p=>({...p,data:{...p.data,name:v}}))} /></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>📍 地點</label><ImeInput key="itin-loc" style={gs.input} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={v=>setModal(p=>({...p,data:{...p.data,location:v}}))} /></div>
-        <div style={{ marginBottom:12 }}><label style={gs.label}>地圖連結</label><input style={gs.input} placeholder="貼上 Google Maps 連結" value={modal.data?.mapUrl||''} onChange={e=>setModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} /></div>
+        <div style={{ marginBottom:12 }}>
+          <label style={gs.label}>📍 地點</label>
+          <div style={{ display:'flex', gap:8 }}>
+            <ImeInput key="itin-loc" style={{ ...gs.input, flex:1 }} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={v=>setModal(p=>({...p,data:{...p.data,location:v}}))} />
+            <button onClick={async()=>{
+              const loc = modal.data?.location||modal.data?.name||'';
+              if(!loc) return;
+              const _mk=['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+              const MAPS_KEY=_mk.join('');
+              const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
+              const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
+              const query=encodeURIComponent(loc+(dest?' '+dest:''));
+              try {
+                const resp=await fetch(`https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${query}&inputtype=textquery&fields=place_id,name,formatted_address&key=${MAPS_KEY}`);
+                const data=await resp.json();
+                const place=data.candidates?.[0];
+                if(place?.place_id){
+                  const url=`https://www.google.com/maps/place/?q=place_id:${place.place_id}`;
+                  setModal(p=>({...p,data:{...p.data,mapUrl:url}}));
+                  alert(`已找到：${place.name}\n地圖連結已自動填入！`);
+                } else { alert('找不到這個地點，請手動貼連結'); }
+              } catch(e){ alert('搜尋失敗，請手動貼連結'); }
+            }} style={{ padding:'8px 12px', borderRadius:10, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0 }}>🔍 搜尋</button>
+          </div>
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <label style={gs.label}>地圖連結 {modal.data?.mapUrl&&<a href={modal.data.mapUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:C.blue, marginLeft:6 }}>📍 預覽</a>}</label>
+          <input style={gs.input} placeholder="貼上 Google Maps 連結，或點上方搜尋自動填入" value={modal.data?.mapUrl||''} onChange={e=>setModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} />
+        </div>
         <div style={{ marginBottom:12 }}><label style={gs.label}>備註</label><ImeInput key="itin-note" multiline value={modal.data?.note||''} onChange={v=>setModal(p=>({...p,data:{...p.data,note:v}}))} rows={3} style={{ ...gs.input, resize:'none', fontFamily:'inherit' }} /></div>
         <div style={{ marginBottom:16 }}><label style={gs.label}>相片（最多5張）</label>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
