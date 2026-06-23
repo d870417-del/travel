@@ -1661,21 +1661,27 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
     };
     try {
       let p = null, lastErr = null;
-      for (let attempt=0; attempt<3; attempt++) {
+      for (let attempt=0; attempt<2; attempt++) {
         try {
           const data = await callAPI();
-          // 流量過高 → 等一下重試
+          // 額度用完 → 完全不重試（重試也沒用，只會更快燒光額度）
+          if (data.error && /quota|exceeded|RESOURCE_EXHAUSTED/i.test(data.error.message||'')) {
+            throw new Error(data.error.message);
+          }
+          // 流量過高 → 只重試一次，間隔長一點
           if (data.error && /high demand|overloaded|503|429/i.test(data.error.message||'')) {
             lastErr = new Error(data.error.message);
-            await new Promise(r=>setTimeout(r, 2000*(attempt+1)));
-            continue;
+            if(attempt===0){ await new Promise(r=>setTimeout(r, 3000)); continue; }
+            throw lastErr;
           }
           p = parseReceipt(data);
           break; // 成功
         } catch(err) {
           lastErr = err;
-          // JSON 解析失敗等 → 短暫等待後重試
-          if (attempt < 2) await new Promise(r=>setTimeout(r, 1000));
+          // 額度錯誤直接中斷，不重試
+          if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(err?.message||'')) throw err;
+          // JSON 解析失敗 → 只重試一次
+          if (attempt < 1) await new Promise(r=>setTimeout(r, 1000));
         }
       }
       if (!p) throw lastErr || new Error('辨識失敗');
