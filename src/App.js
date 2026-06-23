@@ -2791,16 +2791,20 @@ function TripDetailScreen({ user, trip, onBack }) {
           </button>
         )}
         {selectedDate!=='待安排' && filteredItinerary.length>0 && (() => {
+          // destinations 是陣列，取第一個城市當輔助關鍵字
+          const destArr = trip.destinations || (trip.destination?[trip.destination]:[]);
+          const dest = (Array.isArray(destArr) ? destArr[0] : destArr || '').trim();
           const places = filteredItinerary
             .map(it => (it.location||it.name||'').trim())
             .filter(Boolean);
           if(places.length===0) return null;
-          const dest = (trip.destinations||trip.name||'');
-          // 每個地點加上目的地，提升 Google Maps 搜尋準確度
-          const query = places.map(p => encodeURIComponent(dest ? `${p} ${dest}` : p)).join('/');
-          const url = places.length===1
-            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dest?`${places[0]} ${dest}`:places[0])}`
-            : `https://www.google.com/maps/dir/${query}`;
+          let url;
+          if(places.length===1){
+            url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`;
+          } else {
+            const wp = places.map(p=>encodeURIComponent(p+(dest?' '+dest:''))).join('/');
+            url = `https://www.google.com/maps/dir//${wp}`;
+          }
           return (
             <button onClick={()=>window.open(url,'_blank')} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer' }}>
               🗺 在地圖看當天行程（{places.length} 個地點）
