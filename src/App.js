@@ -1678,7 +1678,9 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       setStep('confirm');
     } catch(e) {
       if (cancelledRef.current) return; // 已取消，不顯示錯誤
-      const msg = /high demand|overloaded/i.test(e?.message||'') ? 'Gemini 暫時太忙，請稍等幾秒再試' : '辨識不順，請再試一次或換清楚的照片';
+      let msg;
+      if(/high demand|overloaded/i.test(e?.message||'')) msg = 'Gemini 暫時太忙，請稍等幾秒再試';
+      else msg = '辨識失敗：'+(e?.message||'未知錯誤').slice(0,80);
       setError(msg);
       setStep('upload');
     }
