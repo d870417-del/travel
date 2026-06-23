@@ -1564,7 +1564,7 @@ ${aiSuggest?'另外請依目的地特色，補充建議 2-4 個值得去但清�
 
 
 // ─── 收據拍照記帳組件 ───
-function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, setWalletItems, saveWallet, splitRecords, setSplitRecords, saveSplitRecords, personalWalletItems, setPersonalWalletItems, savePersonalWallet }) {
+function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, setWalletItems, saveWallet, splitRecords, setSplitRecords, saveSplitRecords, personalWalletItems, setPersonalWalletItems, savePersonalWallet, savePersonalWalletFor }) {
   const [step, setStep] = React.useState('upload'); // upload | loading | confirm
   const [photo, setPhoto] = React.useState(null);
   const [photoData, setPhotoData] = React.useState(null);
@@ -1659,14 +1659,31 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       const item = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據', editedById:payerId, editedByName:memberName(payerId), contributorIds:members.map(m=>m.uid), forMemberIds:members.map(m=>m.uid) };
       const n=[...walletItems,item]; setWalletItems(n); saveWallet(n);
     } else if(mode==='split') {
-      // 整單平分：payer 幫 splitMembers 代墊，每人均攤
+      // 整單平分：全額記到付款人的個人帳（支出）
+      const payerEntry = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據代墊', editedById:user.uid, editedByName:memberName(payerId), createdAt:now };
+      if(payerId===user.uid){
+        const np=[...personalWalletItems, payerEntry];
+        setPersonalWalletItems(np); savePersonalWallet(np);
+      } else {
+        // 幫別人記：讀取對方的個人帳再寫入
+        savePersonalWalletFor(payerId, payerEntry);
+      }
+      // 代墊：其他人欠付款人
       const share = Math.floor(total/splitMembers.length);
       const newRecords = splitMembers.filter(uid=>uid!==payerId).map((uid,i)=>({
-        id:now+i, payerId, receiverId:uid, amount:share, currency, note:store, date:dateStr, settled:false, createdAt:now+i
+        id:now+1+i, payerId, receiverId:uid, amount:share, currency, note:store, date:dateStr, settled:false, createdAt:now+1+i
       }));
-      const n=[...splitRecords,...newRecords]; setSplitRecords(n); setSplitRecords&&saveSplitRecords(n);
+      const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
     } else {
-      // 逐項分配：每個品項由 sharedBy 名單平分，payer 幫其他人代墊
+      // 逐項分配：全額記到付款人的個人帳（支出）
+      const payerEntry = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據代墊', editedById:user.uid, editedByName:memberName(payerId), createdAt:now };
+      if(payerId===user.uid){
+        const np=[...personalWalletItems, payerEntry];
+        setPersonalWalletItems(np); savePersonalWallet(np);
+      } else {
+        savePersonalWalletFor(payerId, payerEntry);
+      }
+      // 代墊：每個品項由 sharedBy 名單平分，付款人幫其他人代墊
       const byMember = {}; // receiverId -> {amount, items:[品項名]}
       parsed.items.forEach(it=>{
         const price = Number(it.price)||0;
@@ -1682,8 +1699,8 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
         });
       });
       const newRecords = Object.entries(byMember).filter(([uid,v])=>v.amount>0).map(([uid,v],i)=>({
-        id:now+i, payerId, receiverId:uid, amount:v.amount, currency,
-        note:`${store}（${v.items.join('、')}）`, date:dateStr, settled:false, createdAt:now+i
+        id:now+1+i, payerId, receiverId:uid, amount:v.amount, currency,
+        note:`${store}（${v.items.join('、')}）`, date:dateStr, settled:false, createdAt:now+1+i
       }));
       const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
     }
@@ -2413,8 +2430,17 @@ function TripDetailScreen({ user, trip, onBack }) {
   async function saveCurrencies(currencies, mr) {
     await setDoc(doc(db,"tripData",`${trip.id}_currencies`), { currencies, manualRates:mr||{}, updatedAt:serverTimestamp() });
   }
-  async function savePersonalWallet(items) {
-    await setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${user.uid}`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
+  async function savePersonalWallet(items, targetUid) {
+    const uid = targetUid || user.uid;
+    await setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${uid}`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
+  }
+  // 幫別人的個人帳新增一筆（讀取對方現有帳目→加入→寫回）
+  async function savePersonalWalletFor(targetUid, entry) {
+    const ref = doc(db,"tripData",`${trip.id}_personalWallet_${targetUid}`);
+    const snap = await getDoc(ref);
+    const existing = snap.exists() ? (snap.data().items||[]) : [];
+    const merged = [...existing, entry];
+    await setDoc(ref, { items:JSON.parse(JSON.stringify(merged)), updatedAt:serverTimestamp() });
   }
   async function saveSplitRecords(items) {
     await setDoc(doc(db,"tripData",`${trip.id}_splitRecords`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
@@ -3035,6 +3061,17 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
         </button>
 
+        {/* 📷 拍收據記帳 */}
+        <button onClick={()=>setReceiptModal({open:true})}
+          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.blue}22`, background:C.surface, textAlign:'left', display:'flex', alignItems:'center', gap:16, marginTop:4 }}>
+          <div style={{ fontSize:30 }}>📷</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>拍收據記帳</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>AI 辨識，可記到公費或代墊</div>
+          </div>
+          <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
+        </button>
+
         {/* 匯率設定 */}
         <button onClick={() => setShowCurrencySettings(true)}
           style={{ width:'100%', padding:'10px 14px', borderRadius:12, backgroundColor:C.bg, border:`1px solid ${C.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer', textAlign:'left' }}>
@@ -3604,35 +3641,9 @@ function TripDetailScreen({ user, trip, onBack }) {
           )}
         </div>
 
-        {/* 新增按鈕 */}
-        <button onClick={()=>setWalletAddChoice(true)}
+        {/* 新增按鈕（直接手動記帳） */}
+        <button onClick={()=>{ const allUids=members.map(m=>m.uid); const defaultCur=(tripCurrencies||['JPY'])[0]||'JPY'; setWalletModal({open:true,data:{type:'支出',currency:defaultCur,contributorIds:allUids,forMemberIds:allUids,paidById:user.uid,splitPayerId:null,splitReceiverIds:[]}}); setWalletCalc(false); }}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${pageColor},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${pageColor}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
-
-        {/* 新增方式選擇 */}
-        {walletAddChoice && (
-          <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-            <div onClick={()=>setWalletAddChoice(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
-            <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', padding:24, paddingBottom:40 }}>
-              <div style={{ fontSize:16, fontWeight:800, marginBottom:18, textAlign:'center' }}>新增帳目</div>
-              <button onClick={()=>{ setWalletAddChoice(false); setReceiptModal({open:true}); }}
-                style={{ width:'100%', padding:'16px', marginBottom:12, borderRadius:14, border:`1.5px solid ${C.blue}33`, backgroundColor:C.blueSoft, display:'flex', alignItems:'center', gap:14, cursor:'pointer' }}>
-                <span style={{ fontSize:28 }}>📷</span>
-                <div style={{ textAlign:'left' }}>
-                  <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>拍收據</div>
-                  <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>AI 自動辨識金額和品項</div>
-                </div>
-              </button>
-              <button onClick={()=>{ setWalletAddChoice(false); const allUids=members.map(m=>m.uid); const defaultCur=(tripCurrencies||['JPY'])[0]||'JPY'; setWalletModal({open:true,data:{type:'支出',currency:defaultCur,contributorIds:allUids,forMemberIds:allUids,paidById:user.uid,splitPayerId:null,splitReceiverIds:[]}}); setWalletCalc(false); }}
-                style={{ width:'100%', padding:'16px', borderRadius:14, border:`1.5px solid ${C.border}`, backgroundColor:C.surface, display:'flex', alignItems:'center', gap:14, cursor:'pointer' }}>
-                <span style={{ fontSize:28 }}>✏️</span>
-                <div style={{ textAlign:'left' }}>
-                  <div style={{ fontSize:15, fontWeight:800 }}>手動輸入</div>
-                  <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>自己填寫金額和明細</div>
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* 收據拍照 */}
         {receiptModal.open && <ReceiptModal
@@ -3640,7 +3651,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           user={user} members={members} tripCurrencies={tripCurrencies}
           walletItems={walletItems} setWalletItems={setWalletItems} saveWallet={saveWallet}
           splitRecords={splitRecords} setSplitRecords={setSplitRecords} saveSplitRecords={saveSplitRecords}
-          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet}
+          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet} savePersonalWalletFor={savePersonalWalletFor}
         />}
 
         {/* ── 公費結算 Modal ── */}
