@@ -1612,7 +1612,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'x-goog-api-key':GEMINI_KEY },
-        body: JSON.stringify({ contents:[{ parts:[ { inline_data:{ mime_type:photoMime, data:photoData } }, { text:prompt } ] }], generationConfig:{ maxOutputTokens:1024, temperature:0 } })
+        body: JSON.stringify({ contents:[{ parts:[ { inline_data:{ mime_type:photoMime, data:photoData } }, { text:prompt } ] }], generationConfig:{ maxOutputTokens:2048, temperature:0 } })
       });
       return resp.json();
     };
@@ -1630,7 +1630,21 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       if(data.error) throw new Error(data.error.message);
       const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       let clean = raw.replace(/```json|```/g,'').trim();
-      if(clean && !clean.endsWith('}')){ const lb=clean.lastIndexOf('}'); if(lb>0) clean=clean.slice(0,lb+1); }
+      // 修復被截斷的 JSON
+      if(clean && !clean.endsWith('}')){
+        // 移除最後一個不完整的物件
+        const lastComplete = clean.lastIndexOf('}');
+        if(lastComplete>0){
+          clean = clean.slice(0, lastComplete+1);
+          // 補上陣列和物件的結尾
+          const openArr = (clean.match(/\[/g)||[]).length;
+          const closeArr = (clean.match(/\]/g)||[]).length;
+          const openObj = (clean.match(/\{/g)||[]).length;
+          const closeObj = (clean.match(/\}/g)||[]).length;
+          clean += ']'.repeat(Math.max(0,openArr-closeArr));
+          clean += '}'.repeat(Math.max(0,openObj-closeObj));
+        }
+      }
       const p = JSON.parse(clean);
       // 清掉無意義的範本店名
       if(p.store && /^(receipt|收據|store|商店)$/i.test(p.store.trim())) p.store='';
