@@ -2039,6 +2039,9 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [noteModal, setNoteModal] = useState({ open:false, data:null });
   const [notePhoto, setNotePhoto] = useState(null);
   const [moreSection, setMoreSection] = useState(null); // null=更多首頁, 'todos','notes','members','invite'
+  const [profileModal, setProfileModal] = useState(false); // 編輯個人資料
+  const [profileName, setProfileName] = useState('');
+  const [profileEmoji, setProfileEmoji] = useState('');
   const [inviteVisible, setInviteVisible] = useState(false);
   const [copied, setCopied] = useState(false);
   const [splitRestorePrompt, setSplitRestorePrompt] = useState(null); // { item } 代墊已還記錄刪除後詢問是否還原
@@ -2669,6 +2672,15 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ fontSize:16, fontWeight:800 }}>{trip.name}</div>
           {trip.destination && <div style={{ fontSize:11, color:C.textMuted }}>📍 {trip.destination}</div>}
         </div>
+        {/* 我的頭貼 */}
+        <button onClick={()=>{ setProfileName(user.displayName||''); setProfileEmoji(user.photoURL||''); setProfileModal(true); }}
+          style={{ width:38, height:38, borderRadius:'50%', backgroundColor:color+'18', border:`1.5px solid ${color}55`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, padding:0, overflow:'hidden' }}>
+          {user.photoURL && user.photoURL.startsWith('data:') ? (
+            <img src={user.photoURL} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+          ) : (
+            <span style={{ fontSize:user.photoURL?20:15, fontWeight:700, color }}>{user.photoURL || (user.displayName||'?')[0].toUpperCase()}</span>
+          )}
+        </button>
         <button onClick={onBack}
           style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'6px 12px', color:C.textMuted, fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}>
           離開
@@ -2804,19 +2816,24 @@ function TripDetailScreen({ user, trip, onBack }) {
           </button>
         )}
         {selectedDate!=='待安排' && filteredItinerary.length>0 && (() => {
-          // destinations 是陣列，取第一個城市當輔助關鍵字
           const destArr = trip.destinations || (trip.destination?[trip.destination]:[]);
           const dest = (Array.isArray(destArr) ? destArr[0] : destArr || '').trim();
+          // 清理地點名稱：去掉常見的動作詞，保留地名
+          const clean = s => (s||'').trim()
+            .replace(/(最後|順便|記得|要去|去|逛|吃|玩|看|買)?(補貨|採買|晚餐|午餐|早餐|集合|出發|退房|入住|休息)$/,'')
+            .trim();
           const places = filteredItinerary
-            .map(it => (it.location||it.name||'').trim())
-            .filter(Boolean);
+            .filter(it => it.category!=='交通' && it.category!=='住宿') // 排除交通住宿
+            .map(it => clean(it.location||it.name||''))
+            .filter(Boolean)
+            .slice(0, 10); // Google Maps 最多約 10 個點
           if(places.length===0) return null;
           let url;
           if(places.length===1){
             url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`;
           } else {
             const wp = places.map(p=>encodeURIComponent(p+(dest?' '+dest:''))).join('/');
-            url = `https://www.google.com/maps/dir//${wp}`;
+            url = `https://www.google.com/maps/dir/${wp}`; // 不含起點，純看景點順序
           }
           return (
             <button onClick={()=>window.open(url,'_blank')} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer' }}>
@@ -4078,7 +4095,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                   const canRemove = isAdmin && m.uid!==user.uid && m.role!=='admin';
                   return (
                     <div key={m.uid} style={{ display:'flex', alignItems:'center', gap:12 }}>
-                      <div style={{ width:40, height:40, borderRadius:'50%', backgroundColor:mc+'22', border:`1.5px solid ${mc}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:700, color:mc, flexShrink:0 }}>{(m.displayName||'?')[0].toUpperCase()}</div>
+                      <div style={{ width:40, height:40, borderRadius:'50%', backgroundColor:mc+'22', border:`1.5px solid ${mc}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:m.photoURL?20:16, fontWeight:700, color:mc, flexShrink:0, overflow:'hidden' }}>{m.photoURL&&m.photoURL.startsWith('data:') ? <img src={m.photoURL} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : (m.photoURL || (m.displayName||'?')[0].toUpperCase())}</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:14, fontWeight:600 }}>{m.displayName}{m.uid===user.uid&&<span style={{ fontSize:11, color:C.textMuted, marginLeft:6 }}>（我）</span>}</div>
                         <div style={{ fontSize:11, color:m.role==='admin'?C.blue:C.textMuted, fontWeight:600 }}>{m.role==='admin'?'管理員':'成員'}</div>
@@ -5396,6 +5413,80 @@ function TripDetailScreen({ user, trip, onBack }) {
         tripDates={tripDates} setItinerary={setItinerary} setTripDates={setTripDates}
         saveItinerary={saveItinerary}
       />}
+      {/* 編輯個人資料 */}
+      {profileModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+          <div onClick={()=>setProfileModal(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+          <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:400, padding:24, maxHeight:'85vh', overflowY:'auto' }}>
+            <div style={{ fontSize:17, fontWeight:800, marginBottom:18 }}>個人資料</div>
+
+            {/* 預覽 */}
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>
+              <div style={{ width:80, height:80, borderRadius:'50%', backgroundColor:color+'18', border:`2px solid ${color}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:38, overflow:'hidden' }}>
+                {profileEmoji && profileEmoji.startsWith('data:') ? (
+                  <img src={profileEmoji} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                ) : (profileEmoji || (profileName||'?')[0].toUpperCase())}
+              </div>
+            </div>
+
+            {/* 信箱 */}
+            <div style={{ textAlign:'center', fontSize:12, color:C.textMuted, marginBottom:20 }}>{user.email}</div>
+
+            {/* 名稱 */}
+            <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>暱稱</div>
+            <input value={profileName} onChange={e=>setProfileName(e.target.value)} placeholder="輸入你的名稱" style={{ ...gs.input, marginBottom:18 }}/>
+
+            {/* 上傳圖片 */}
+            <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>上傳照片當頭貼</div>
+            <input type="file" accept="image/*" id="avatar-up" style={{ display:'none' }} onChange={e=>{
+              const f=e.target.files[0]; if(!f) return;
+              const reader=new FileReader();
+              reader.onload=ev=>{
+                const img=new Image();
+                img.onload=()=>{
+                  // 裁成正方形小圖（200x200）存 base64
+                  const size=200;
+                  const canvas=document.createElement('canvas');
+                  canvas.width=size; canvas.height=size;
+                  const ctx=canvas.getContext('2d');
+                  const m=Math.min(img.width,img.height);
+                  ctx.drawImage(img,(img.width-m)/2,(img.height-m)/2,m,m,0,0,size,size);
+                  setProfileEmoji(canvas.toDataURL('image/jpeg',0.7));
+                };
+                img.src=ev.target.result;
+              };
+              reader.readAsDataURL(f);
+            }}/>
+            <label htmlFor="avatar-up" style={{ display:'block', textAlign:'center', padding:'10px', borderRadius:10, border:`1.5px dashed ${color}66`, backgroundColor:color+'10', color, fontSize:13, fontWeight:700, cursor:'pointer', marginBottom:14 }}>📷 從相簿選照片</label>
+
+            {/* 或選 emoji */}
+            <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>或選用 emoji 頭像</div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:8 }}>
+              <button onClick={()=>setProfileEmoji('')} style={{ width:42, height:42, borderRadius:'50%', border:`1.5px solid ${!profileEmoji?color:C.border}`, backgroundColor:!profileEmoji?color+'18':C.bg, fontSize:14, fontWeight:700, color:color, cursor:'pointer' }}>{(profileName||'?')[0].toUpperCase()}</button>
+              {['😀','😎','🥰','🤩','🐱','🐶','🐰','🐻','🦊','🐼','🌸','🌟','🍜','✈️','🎒','🏝'].map(em=>(
+                <button key={em} onClick={()=>setProfileEmoji(em)} style={{ width:42, height:42, borderRadius:'50%', border:`1.5px solid ${profileEmoji===em?color:C.border}`, backgroundColor:profileEmoji===em?color+'18':C.bg, fontSize:21, cursor:'pointer' }}>{em}</button>
+              ))}
+            </div>
+
+            <div style={{ display:'flex', gap:10, marginTop:18 }}>
+              <button onClick={()=>setProfileModal(false)} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontWeight:700, fontSize:14, cursor:'pointer' }}>取消</button>
+              <button onClick={async()=>{
+                const newName = profileName.trim();
+                if(!newName) return;
+                try {
+                  await updateProfile(auth.currentUser, { displayName:newName, photoURL:profileEmoji||'' });
+                  // 更新 users 集合
+                  await setDoc(doc(db,"users",user.uid), { displayName:newName, photoURL:profileEmoji||'', email:user.email }, { merge:true });
+                  // 更新這趟旅程的成員資料
+                  await setDoc(doc(db,"tripMembers",`${trip.id}_${user.uid}`), { displayName:newName, photoURL:profileEmoji||'' }, { merge:true });
+                  setMembers(p=>p.map(m=>m.uid===user.uid?{...m,displayName:newName,photoURL:profileEmoji||''}:m));
+                  setProfileModal(false);
+                } catch(err){ console.error(err); alert('更新失敗，請重試'); }
+              }} style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${color},${C.green})`, color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer' }}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
       {uploadModal.open && <UploadItineraryModal
         onClose={()=>setUploadModal({open:false})}
         user={user} trip={trip} members={members}
