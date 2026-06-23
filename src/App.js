@@ -1583,8 +1583,24 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
   const handleFile = (e) => {
     const f = e.target.files[0]; if(!f) return;
     setPhoto(f); setError('');
+    // 壓縮圖片以加快辨識速度
     const reader = new FileReader();
-    reader.onload = ev => { setPhotoData(ev.target.result.split(',')[1]); setPhotoMime(f.type); };
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 1200;
+        const scale = Math.min(1, maxW/img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width*scale;
+        canvas.height = img.height*scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        setPhotoData(compressed.split(',')[1]);
+        setPhotoMime('image/jpeg');
+      };
+      img.src = ev.target.result;
+    };
     reader.readAsDataURL(f);
   };
 
@@ -5027,7 +5043,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div onClick={()=>setTravelInfoOpen(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
           <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'88vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-              <div style={{ fontSize:17, fontWeight:800 }}>✈️🛏 交通與住宿</div>
+              <div style={{ fontSize:17, fontWeight:800 }}>交通與住宿</div>
               <button onClick={()=>setTravelInfoOpen(false)} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
             </div>
             {tripDates.some(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)) && (
@@ -5039,7 +5055,7 @@ function TripDetailScreen({ user, trip, onBack }) {
 
             {/* 航班/交通 */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>✈️ 航班・交通</div>
+              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>航班・交通</div>
               <button onClick={()=>setTransportModal({open:true,data:null})} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 新增</button>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:24 }}>
@@ -5059,7 +5075,7 @@ function TripDetailScreen({ user, trip, onBack }) {
 
             {/* 住宿 */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>🛏 住宿</div>
+              <div style={{ fontSize:13, fontWeight:800, color:C.textMuted }}>住宿</div>
               <button onClick={()=>setLodgingModal({open:true,data:null})} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 新增</button>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
