@@ -3081,6 +3081,13 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
           <div style={{ fontSize:11, color:C.purple, fontWeight:700 }}>設定 ›</div>
         </button>
+        {receiptModal.open && <ReceiptModal
+          onClose={()=>setReceiptModal({open:false})}
+          user={user} members={members} tripCurrencies={tripCurrencies}
+          walletItems={walletItems} setWalletItems={setWalletItems} saveWallet={saveWallet}
+          splitRecords={splitRecords} setSplitRecords={setSplitRecords} saveSplitRecords={saveSplitRecords}
+          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet} savePersonalWalletFor={savePersonalWalletFor}
+        />}
       </div>
     );
 
@@ -3482,6 +3489,13 @@ function TripDetailScreen({ user, trip, onBack }) {
         {/* 新增代墊按鈕 */}
         <button onClick={() => setSplitModal({open:true, data:{payerId:user.uid, receiverIds:[], amount:'', currency:(tripCurrencies||['JPY'])[0]||'JPY', note:''}})}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.warm},${C.text})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${C.warm}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+        {receiptModal.open && <ReceiptModal
+          onClose={()=>setReceiptModal({open:false})}
+          user={user} members={members} tripCurrencies={tripCurrencies}
+          walletItems={walletItems} setWalletItems={setWalletItems} saveWallet={saveWallet}
+          splitRecords={splitRecords} setSplitRecords={setSplitRecords} saveSplitRecords={saveSplitRecords}
+          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet} savePersonalWalletFor={savePersonalWalletFor}
+        />}
       </div>
     );
 
