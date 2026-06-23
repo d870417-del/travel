@@ -1572,6 +1572,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
   const [parsed, setParsed] = React.useState(null); // {store, total, currency, items:[]}
   const [error, setError] = React.useState('');
   const [status, setStatus] = React.useState('');
+  const cancelledRef = React.useRef(false);
   const [payerId, setPayerId] = React.useState(user.uid);
   const [mode, setMode] = React.useState('split'); // split(整單平分) | pool(記公費) | items(逐項)
   const [splitMembers, setSplitMembers] = React.useState(members.map(m=>m.uid));
@@ -1619,6 +1620,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
 
   const recognize = async () => {
     if(!photoData) return;
+    cancelledRef.current = false;
     setStep('loading'); setError('');
     const prompt = `這是一張餐廳或商店收據。請仔細辨識：店名、幣別、每個品項名稱與價格、總金額。注意總金額通常標示「總金額」「合計」「TOTAL」。若品項是外文（日文、韓文、英文等），請翻譯成繁體中文（例如「ラーメン」翻成「拉麵」）。店名可保留原文。只回傳純JSON（無說明無markdown無代碼塊）：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額數字,"items":[{"name":"品項中文名","price":金額}]}`;
     const callAPI = async () => {
@@ -1667,6 +1669,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
         }
       }
       if (!p) throw lastErr || new Error('辨識失敗');
+      if (cancelledRef.current) return; // 使用者已取消
       // 清掉無意義的範本店名
       if(p.store && /^(receipt|收據|store|商店)$/i.test(p.store.trim())) p.store='';
       setParsed(p);
@@ -1674,6 +1677,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       if(p.items) p.items.forEach(it=>{ it.sharedBy = members.map(m=>m.uid); });
       setStep('confirm');
     } catch(e) {
+      if (cancelledRef.current) return; // 已取消，不顯示錯誤
       const msg = /high demand|overloaded/i.test(e?.message||'') ? 'Gemini 暫時太忙，請稍等幾秒再試' : '辨識不順，請再試一次或換清楚的照片';
       setError(msg);
       setStep('upload');
@@ -1772,7 +1776,8 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
           <div style={{ textAlign:'center', padding:'50px 20px' }}>
             <div style={{ fontSize:40, marginBottom:16, display:'inline-block', animation:'spin 1.2s linear infinite' }}>🧾</div>
             <div style={{ fontSize:15, fontWeight:700 }}>AI 正在辨識收據...</div>
-            <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>通常幾秒內完成</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>可能需要 30-60 秒，請稍候</div>
+            <button onClick={()=>{ cancelledRef.current=true; setStep('upload'); }} style={{ marginTop:20, padding:'8px 20px', borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>取消</button>
             <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
           </div>
         )}
@@ -3545,7 +3550,8 @@ function TripDetailScreen({ user, trip, onBack }) {
         {/* 次頁 header */}
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:30 }}>
           <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
-          <div style={{ fontSize:15, fontWeight:800 }}>{pageTitle}</div>
+          <div style={{ fontSize:15, fontWeight:800, flex:1 }}>{pageTitle}</div>
+          <button onClick={()=>setReceiptModal({open:true})} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📷 拍收據</button>
         </div>
 
         {/* 餘額 + 結算按鈕 */}
