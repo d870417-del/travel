@@ -1666,7 +1666,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
         </div>
 
         {step==='upload' && (<>
-          <input type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display:'none' }} id="receipt-up"/>
+          <input type="file" accept="image/*" onChange={handleFile} style={{ display:'none' }} id="receipt-up"/>
           <label htmlFor="receipt-up" style={{ display:'block', border:`2px dashed ${photo?C.blue:C.border}`, borderRadius:16, padding:'40px 20px', textAlign:'center', cursor:'pointer', backgroundColor:photo?C.blueSoft:'transparent' }}>
             {photo ? (<>
               <div style={{ fontSize:36, marginBottom:8 }}>🧾</div>
@@ -2507,10 +2507,9 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
           <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>選擇日期</span>
           <div style={{ display:'flex', gap:6 }}>
-            <button onClick={()=>setAiPlanModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.green}44`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer' }}>✨ 排行程</button>
-            <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>✈️🛏 交通住宿</button>
-            <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📥 智能匯入</button>
-            <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 日期</button>
+            <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>交通住宿</button>
+            <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>匯入</button>
+            <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>＋日期</button>
           </div>
         </div>
         <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
@@ -2595,6 +2594,11 @@ function TripDetailScreen({ user, trip, onBack }) {
               ))}
             </div>
           </div>
+        )}
+        {selectedDate==='待安排' && filteredItinerary.length>0 && (
+          <button onClick={()=>setAiPlanModal({open:true})} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.green}44`, backgroundColor:C.greenSoft, color:C.green, fontSize:14, fontWeight:800, cursor:'pointer' }}>
+            ✨ AI 一鍵排行程
+          </button>
         )}
         {filteredItinerary.length===0 ? (
           <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>
