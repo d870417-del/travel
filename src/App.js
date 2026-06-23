@@ -1563,6 +1563,198 @@ ${aiSuggest?'另外請依目的地特色，補充建議 2-4 個值得去但清�
 }
 
 
+// ─── 收據拍照記帳組件 ───
+function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, setWalletItems, saveWallet, splitRecords, setSplitRecords, saveSplitRecords, personalWalletItems, setPersonalWalletItems, savePersonalWallet }) {
+  const [step, setStep] = React.useState('upload'); // upload | loading | confirm
+  const [photo, setPhoto] = React.useState(null);
+  const [photoData, setPhotoData] = React.useState(null);
+  const [photoMime, setPhotoMime] = React.useState('');
+  const [parsed, setParsed] = React.useState(null); // {store, total, currency, items:[]}
+  const [error, setError] = React.useState('');
+  const [payerId, setPayerId] = React.useState(user.uid);
+  const [mode, setMode] = React.useState('split'); // split(整單平分) | pool(記公費) | items(逐項)
+  const [splitMembers, setSplitMembers] = React.useState(members.map(m=>m.uid));
+  const [currency, setCurrency] = React.useState((tripCurrencies||['JPY'])[0]||'JPY');
+
+  const _gk = ['AQ.Ab8RN6IJ1W','s-NnDyfYbXwpi','U0_Qa7qZm1lHh','S0BxaYkC3xxsRQ'];
+  const GEMINI_KEY = (typeof import.meta!=='undefined' && import.meta.env && import.meta.env.VITE_GEMINI_KEY) || _gk.join('');
+  const SYM = { JPY:'¥', KRW:'₩', TWD:'NT$', USD:'$' };
+
+  const handleFile = (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    setPhoto(f); setError('');
+    const reader = new FileReader();
+    reader.onload = ev => { setPhotoData(ev.target.result.split(',')[1]); setPhotoMime(f.type); };
+    reader.readAsDataURL(f);
+  };
+
+  const recognize = async () => {
+    if(!photoData) return;
+    setStep('loading'); setError('');
+    try {
+      const prompt = `你是收據辨識助手。請分析這張收據圖片，辨識店名、各品項與金額、總金額、幣別。只回傳純 JSON（不要說明、不要 markdown）：
+{"store":"店名","currency":"JPY|KRW|TWD|USD","total":總金額數字,"items":[{"name":"品項名","price":金額數字}]}`;
+      const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'x-goog-api-key':GEMINI_KEY },
+        body: JSON.stringify({ contents:[{ parts:[ { inline_data:{ mime_type:photoMime, data:photoData } }, { text:prompt } ] }], generationConfig:{ maxOutputTokens:2048, temperature:0.1 } })
+      });
+      const data = await resp.json();
+      if(data.error) throw new Error(data.error.message);
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      let clean = raw.replace(/```json|```/g,'').trim();
+      if(clean && !clean.endsWith('}')){ const lb=clean.lastIndexOf('}'); if(lb>0) clean=clean.slice(0,lb+1); }
+      const p = JSON.parse(clean);
+      setParsed(p);
+      if(p.currency) setCurrency(p.currency);
+      // 預設每個品項分配給付款人
+      if(p.items) p.items.forEach(it=>{ it.assignTo = 'all'; });
+      setStep('confirm');
+    } catch(e) {
+      setError('辨識失敗：'+(e?.message||'請換清楚一點的照片'));
+      setStep('upload');
+    }
+  };
+
+  const memberName = uid => members.find(m=>m.uid===uid)?.displayName||'?';
+
+  const apply = () => {
+    const total = Number(parsed.total)||parsed.items?.reduce((s,it)=>s+Number(it.price||0),0)||0;
+    const store = parsed.store||'收據';
+    const now = Date.now();
+    const today = new Date();
+    const dateStr = `${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
+
+    if(mode==='pool') {
+      // 記到公費
+      const item = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據', editedById:payerId, editedByName:memberName(payerId), contributorIds:members.map(m=>m.uid), forMemberIds:members.map(m=>m.uid) };
+      const n=[...walletItems,item]; setWalletItems(n); saveWallet(n);
+    } else if(mode==='split') {
+      // 整單平分：payer 幫 splitMembers 代墊
+      const share = Math.floor(total/splitMembers.length);
+      const newRecords = splitMembers.filter(uid=>uid!==payerId).map((uid,i)=>({
+        id:now+i, payerId, receiverId:uid, amount:share, currency, note:store, date:dateStr, settled:false, createdAt:now+i
+      }));
+      const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
+    } else {
+      // 逐項分配
+      const byMember = {};
+      parsed.items.forEach(it=>{
+        const price = Number(it.price)||0;
+        if(it.assignTo==='all'){
+          const share = Math.floor(price/splitMembers.length);
+          splitMembers.forEach(uid=>{ if(uid!==payerId) byMember[uid]=(byMember[uid]||0)+share; });
+        } else if(it.assignTo!==payerId){
+          byMember[it.assignTo]=(byMember[it.assignTo]||0)+price;
+        }
+      });
+      const newRecords = Object.entries(byMember).filter(([uid,amt])=>amt>0).map(([uid,amt],i)=>({
+        id:now+i, payerId, receiverId:uid, amount:amt, currency, note:store, date:dateStr, settled:false, createdAt:now+i
+      }));
+      const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
+    }
+    onClose();
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:250, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+      <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'90vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div style={{ fontSize:17, fontWeight:800 }}>📷 拍收據記帳</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
+        </div>
+
+        {step==='upload' && (<>
+          <input type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display:'none' }} id="receipt-up"/>
+          <label htmlFor="receipt-up" style={{ display:'block', border:`2px dashed ${photo?C.blue:C.border}`, borderRadius:16, padding:'40px 20px', textAlign:'center', cursor:'pointer', backgroundColor:photo?C.blueSoft:'transparent' }}>
+            {photo ? (<>
+              <div style={{ fontSize:36, marginBottom:8 }}>🧾</div>
+              <div style={{ fontSize:14, fontWeight:700, color:C.blue }}>{photo.name}</div>
+              <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>點擊重新選擇</div>
+            </>) : (<>
+              <div style={{ fontSize:44, marginBottom:10 }}>📸</div>
+              <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>拍照或選擇收據照片</div>
+            </>)}
+          </label>
+          {error && <div style={{ color:C.danger, fontSize:13, marginTop:12, textAlign:'center' }}>{error}</div>}
+          <button onClick={recognize} disabled={!photoData} style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer', opacity:photoData?1:0.5 }}>✨ 辨識收據</button>
+        </>)}
+
+        {step==='loading' && (
+          <div style={{ textAlign:'center', padding:'50px 20px' }}>
+            <div style={{ fontSize:40, marginBottom:16 }}>🧾</div>
+            <div style={{ fontSize:15, fontWeight:700 }}>AI 正在辨識收據...</div>
+          </div>
+        )}
+
+        {step==='confirm' && parsed && (<>
+          <div style={{ marginBottom:16, padding:'12px 14px', backgroundColor:C.bg, borderRadius:12 }}>
+            <div style={{ fontSize:15, fontWeight:800 }}>{parsed.store||'收據'}</div>
+            <div style={{ fontSize:20, fontWeight:900, color:C.blue, marginTop:4 }}>{SYM[currency]||''}{(Number(parsed.total)||0).toLocaleString()}</div>
+          </div>
+
+          {/* 付款人 */}
+          <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>誰付款？</div>
+          <select value={payerId} onChange={e=>setPayerId(e.target.value)} style={{ ...gs.input, marginBottom:16, appearance:'none' }}>
+            {members.map(m=><option key={m.uid} value={m.uid}>{m.displayName}</option>)}
+          </select>
+
+          {/* 模式 */}
+          <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>怎麼分？</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+            {[['split','整單平分','大家均攤這筆'],['pool','記到公費','直接進共同公費'],['items','逐項分配','每個品項分給不同人']].map(([v,t,d])=>(
+              <button key={v} onClick={()=>setMode(v)} style={{ padding:'12px 14px', borderRadius:12, border:`1.5px solid ${mode===v?C.blue:C.border}`, backgroundColor:mode===v?C.blueSoft:C.bg, textAlign:'left', cursor:'pointer' }}>
+                <div style={{ fontSize:14, fontWeight:700, color:mode===v?C.blue:C.text }}>{t}</div>
+                <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{d}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* 平分對象 */}
+          {(mode==='split'||mode==='items') && (
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>{mode==='split'?'平分給誰':'平分品項給誰'}</div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {members.map(m=>(
+                  <button key={m.uid} onClick={()=>setSplitMembers(s=>s.includes(m.uid)?s.filter(x=>x!==m.uid):[...s,m.uid])}
+                    style={{ padding:'6px 12px', borderRadius:8, border:`1.5px solid ${splitMembers.includes(m.uid)?C.blue:C.border}`, backgroundColor:splitMembers.includes(m.uid)?C.blueSoft:C.bg, color:splitMembers.includes(m.uid)?C.blue:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>{m.displayName}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 逐項分配 */}
+          {mode==='items' && parsed.items && (
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:8 }}>品項明細</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {parsed.items.map((it,i)=>(
+                  <div key={i} style={{ padding:'10px 12px', backgroundColor:C.bg, borderRadius:10 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                      <span style={{ fontSize:14, fontWeight:700 }}>{it.name}</span>
+                      <span style={{ fontSize:14, fontWeight:700 }}>{SYM[currency]||''}{Number(it.price||0).toLocaleString()}</span>
+                    </div>
+                    <select value={it.assignTo} onChange={e=>{ const v=e.target.value; setParsed(p=>({...p, items:p.items.map((x,j)=>j===i?{...x,assignTo:v}:x)})); }} style={{ ...gs.input, fontSize:12, padding:'6px 10px', appearance:'none' }}>
+                      <option value="all">大家平分</option>
+                      {members.map(m=><option key={m.uid} value={m.uid}>{m.displayName}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display:'flex', gap:10 }}>
+            <button onClick={()=>setStep('upload')} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>↩ 重拍</button>
+            <button onClick={apply} style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer' }}>✓ 建立帳目</button>
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function TripDetailScreen({ user, trip, onBack }) {
   const color = trip.color || C.blue;
   const [tab, setTab] = useState('itinerary');
@@ -1604,6 +1796,8 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [splitModal, setSplitModal] = useState({ open:false, data:null });
   const [splitEditTarget, setSplitEditTarget] = useState(null); // 編輯的 group
   const [walletModal, setWalletModal] = useState({ open:false, data:null });
+  const [walletAddChoice, setWalletAddChoice] = useState(false); // 選拍照或手動
+  const [receiptModal, setReceiptModal] = useState({ open:false }); // 收據拍照
   const [walletCalc, setWalletCalc] = useState(false);
   const [transferStates, setTransferStates] = useState({});
   const [sharedTodos, setSharedTodos] = useState([]);
@@ -2313,6 +2507,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
           <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>選擇日期</span>
           <div style={{ display:'flex', gap:6 }}>
+            <button onClick={()=>setAiPlanModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.green}44`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer' }}>✨ 排行程</button>
             <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>✈️🛏 交通住宿</button>
             <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📥 智能匯入</button>
             <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>＋ 日期</button>
@@ -2400,11 +2595,6 @@ function TripDetailScreen({ user, trip, onBack }) {
               ))}
             </div>
           </div>
-        )}
-        {selectedDate==='待安排' && filteredItinerary.length>0 && (
-          <button onClick={()=>setAiPlanModal({open:true})} style={{ width:'100%', marginBottom:14, padding:'14px', borderRadius:14, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer', boxShadow:`0 4px 14px ${C.blue}44` }}>
-            ✨ AI 一鍵排行程
-          </button>
         )}
         {filteredItinerary.length===0 ? (
           <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>
@@ -3307,8 +3497,43 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
 
         {/* 新增按鈕 */}
-        <button onClick={()=>{ const allUids=members.map(m=>m.uid); const defaultCur=(tripCurrencies||['JPY'])[0]||'JPY'; setWalletModal({open:true,data:{type:'支出',currency:defaultCur,contributorIds:allUids,forMemberIds:allUids,paidById:user.uid,splitPayerId:null,splitReceiverIds:[]}}); setWalletCalc(false); }}
+        <button onClick={()=>setWalletAddChoice(true)}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${pageColor},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${pageColor}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+
+        {/* 新增方式選擇 */}
+        {walletAddChoice && (
+          <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+            <div onClick={()=>setWalletAddChoice(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+            <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', padding:24, paddingBottom:40 }}>
+              <div style={{ fontSize:16, fontWeight:800, marginBottom:18, textAlign:'center' }}>新增帳目</div>
+              <button onClick={()=>{ setWalletAddChoice(false); setReceiptModal({open:true}); }}
+                style={{ width:'100%', padding:'16px', marginBottom:12, borderRadius:14, border:`1.5px solid ${C.blue}33`, backgroundColor:C.blueSoft, display:'flex', alignItems:'center', gap:14, cursor:'pointer' }}>
+                <span style={{ fontSize:28 }}>📷</span>
+                <div style={{ textAlign:'left' }}>
+                  <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>拍收據</div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>AI 自動辨識金額和品項</div>
+                </div>
+              </button>
+              <button onClick={()=>{ setWalletAddChoice(false); const allUids=members.map(m=>m.uid); const defaultCur=(tripCurrencies||['JPY'])[0]||'JPY'; setWalletModal({open:true,data:{type:'支出',currency:defaultCur,contributorIds:allUids,forMemberIds:allUids,paidById:user.uid,splitPayerId:null,splitReceiverIds:[]}}); setWalletCalc(false); }}
+                style={{ width:'100%', padding:'16px', borderRadius:14, border:`1.5px solid ${C.border}`, backgroundColor:C.surface, display:'flex', alignItems:'center', gap:14, cursor:'pointer' }}>
+                <span style={{ fontSize:28 }}>✏️</span>
+                <div style={{ textAlign:'left' }}>
+                  <div style={{ fontSize:15, fontWeight:800 }}>手動輸入</div>
+                  <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>自己填寫金額和明細</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 收據拍照 */}
+        {receiptModal.open && <ReceiptModal
+          onClose={()=>setReceiptModal({open:false})}
+          user={user} members={members} tripCurrencies={tripCurrencies}
+          walletItems={walletItems} setWalletItems={setWalletItems} saveWallet={saveWallet}
+          splitRecords={splitRecords} setSplitRecords={setSplitRecords} saveSplitRecords={saveSplitRecords}
+          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet}
+        />}
 
         {/* ── 公費結算 Modal ── */}
         {showPoolSettlement&&(
