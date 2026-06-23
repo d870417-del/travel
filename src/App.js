@@ -4230,25 +4230,32 @@ function TripDetailScreen({ user, trip, onBack }) {
           <label style={gs.label}>📍 地點</label>
           <div style={{ display:'flex', gap:8 }}>
             <ImeInput key="itin-loc" style={{ ...gs.input, flex:1 }} placeholder="例：淺草寺" value={modal.data?.location||''} onChange={v=>setModal(p=>({...p,data:{...p.data,location:v}}))} />
-            <button onClick={async()=>{
-              const loc = modal.data?.location||modal.data?.name||'';
-              if(!loc) return;
-              const _mk=['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
-              const MAPS_KEY=_mk.join('');
+            <button onClick={async(e)=>{
+              const loc = modal.data?.location||modal.data?.name||"";
+              if(!loc){ alert("請先填地點名稱"); return; }
+              const btn=e.currentTarget; btn.textContent="搜尋中..."; btn.disabled=true;
+              const _mk=["AIzaSyCsOqxQ","n5sIyEmXpK1l","7R4vTBpqz3-OaOQ"];
+              const MAPS_KEY=_mk.join("");
               const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
-              const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
-              const query=encodeURIComponent(loc+(dest?' '+dest:''));
+              const dest=Array.isArray(destArr)?destArr[0]:destArr||"";
+              const query=loc+(dest?" "+dest:"");
               try {
-                const resp=await fetch(`https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${query}&inputtype=textquery&fields=place_id,name,formatted_address&key=${MAPS_KEY}`);
+                const resp=await fetch("https://places.googleapis.com/v1/places:searchText",{
+                  method:"POST",
+                  headers:{"Content-Type":"application/json","X-Goog-Api-Key":MAPS_KEY,"X-Goog-FieldMask":"places.id,places.displayName,places.formattedAddress"},
+                  body:JSON.stringify({textQuery:query,languageCode:"zh-TW"})
+                });
                 const data=await resp.json();
-                const place=data.candidates?.[0];
-                if(place?.place_id){
-                  const url=`https://www.google.com/maps/place/?q=place_id:${place.place_id}`;
+                const place=data.places?.[0];
+                if(place?.id){
+                  const url="https://www.google.com/maps/place/?q=place_id:"+place.id;
                   setModal(p=>({...p,data:{...p.data,mapUrl:url}}));
-                  alert(`已找到：${place.name}\n地圖連結已自動填入！`);
-                } else { alert('找不到這個地點，請手動貼連結'); }
-              } catch(e){ alert('搜尋失敗，請手動貼連結'); }
-            }} style={{ padding:'8px 12px', borderRadius:10, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0 }}>🔍 搜尋</button>
+                  alert("✅ 已找到："+( place.displayName?.text||loc)+"
+地圖連結已自動填入！");
+                } else { alert("找不到這個地點，請確認名稱後再試"); }
+              } catch(err){ alert("搜尋失敗："+err.message); }
+              btn.textContent="🔍 搜尋"; btn.disabled=false;
+            }} style={{ padding:"8px 12px", borderRadius:10, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>🔍 搜尋</button>
           </div>
         </div>
         <div style={{ marginBottom:12 }}>
