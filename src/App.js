@@ -1588,14 +1588,14 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
     reader.onload = ev => {
       const img = new Image();
       img.onload = () => {
-        const maxW = 1200;
+        const maxW = 1000;
         const scale = Math.min(1, maxW/img.width);
         const canvas = document.createElement('canvas');
         canvas.width = img.width*scale;
         canvas.height = img.height*scale;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        const compressed = canvas.toDataURL('image/jpeg', 0.55);
         setPhotoData(compressed.split(',')[1]);
         setPhotoMime('image/jpeg');
       };
@@ -1607,13 +1607,12 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
   const recognize = async () => {
     if(!photoData) return;
     setStep('loading'); setError('');
-    const prompt = `你是收據辨識助手。請分析這張收據圖片，辨識店名、各品項與金額、總金額、幣別。只回傳純 JSON（不要說明、不要 markdown）：
-{"store":"店名","currency":"JPY|KRW|TWD|USD","total":總金額數字,"items":[{"name":"品項名","price":金額數字}]}`;
+    const prompt = `辨識收據，回傳純JSON（無說明無markdown）：{"store":"店名","currency":"JPY|KRW|TWD|USD","total":總額數字,"items":[{"name":"品項","price":金額}]}`;
     const callAPI = async () => {
       const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'x-goog-api-key':GEMINI_KEY },
-        body: JSON.stringify({ contents:[{ parts:[ { inline_data:{ mime_type:photoMime, data:photoData } }, { text:prompt } ] }], generationConfig:{ maxOutputTokens:2048, temperature:0.1 } })
+        body: JSON.stringify({ contents:[{ parts:[ { inline_data:{ mime_type:photoMime, data:photoData } }, { text:prompt } ] }], generationConfig:{ maxOutputTokens:1024, temperature:0 } })
       });
       return resp.json();
     };
@@ -1718,8 +1717,10 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
 
         {step==='loading' && (
           <div style={{ textAlign:'center', padding:'50px 20px' }}>
-            <div style={{ fontSize:40, marginBottom:16 }}>🧾</div>
+            <div style={{ fontSize:40, marginBottom:16, display:'inline-block', animation:'spin 1.2s linear infinite' }}>🧾</div>
             <div style={{ fontSize:15, fontWeight:700 }}>AI 正在辨識收據...</div>
+            <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>通常幾秒內完成</div>
+            <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
           </div>
         )}
 
