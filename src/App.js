@@ -1571,6 +1571,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
   const [photoMime, setPhotoMime] = React.useState('');
   const [parsed, setParsed] = React.useState(null); // {store, total, currency, items:[]}
   const [error, setError] = React.useState('');
+  const [status, setStatus] = React.useState('');
   const [payerId, setPayerId] = React.useState(user.uid);
   const [mode, setMode] = React.useState('split'); // split(整單平分) | pool(記公費) | items(逐項)
   const [splitMembers, setSplitMembers] = React.useState(members.map(m=>m.uid));
@@ -1582,22 +1583,34 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
 
   const handleFile = (e) => {
     const f = e.target.files[0]; if(!f) return;
-    setPhoto(f); setError('');
-    // 壓縮圖片以加快辨識速度
+    setPhoto(f); setError(''); setPhotoData(null);
+    setStatus('讀取照片中...');
     const reader = new FileReader();
+    reader.onerror = () => { setStatus(''); setError('讀取照片失敗，請換一張'); };
     reader.onload = ev => {
+      setStatus('壓縮圖片中...');
       const img = new Image();
+      img.onerror = () => { setStatus(''); setError('此照片格式無法處理（可能是 HEIC），請先用截圖功能擷取收據再上傳'); };
       img.onload = () => {
-        const maxW = 1000;
-        const scale = Math.min(1, maxW/img.width);
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width*scale;
-        canvas.height = img.height*scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.55);
-        setPhotoData(compressed.split(',')[1]);
-        setPhotoMime('image/jpeg');
+        try {
+          const maxW = 900;
+          const scale = Math.min(1, maxW/img.width);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width*scale);
+          canvas.height = Math.round(img.height*scale);
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.6);
+          const b64 = compressed.split(',')[1];
+          if(!b64 || b64.length<100){ setStatus(''); setError('圖片處理失敗，請換一張'); return; }
+          setPhotoData(b64);
+          setPhotoMime('image/jpeg');
+          setStatus('');
+        } catch(err) {
+          setStatus(''); setError('圖片處理失敗：'+(err.message||'請換一張'));
+        }
       };
       img.src = ev.target.result;
     };
@@ -1607,7 +1620,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
   const recognize = async () => {
     if(!photoData) return;
     setStep('loading'); setError('');
-    const prompt = `這是一張餐廳或商店收據。請仔細辨識：店名、幣別、每個品項名稱與價格、總金額。注意總金額通常標示「總金額」「合計」「TOTAL」。只回傳純JSON（無說明無markdown無代碼塊）：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額數字,"items":[{"name":"品項","price":金額}]}`;
+    const prompt = `這是一張餐廳或商店收據。請仔細辨識：店名、幣別、每個品項名稱與價格、總金額。注意總金額通常標示「總金額」「合計」「TOTAL」。若品項是外文（日文、韓文、英文等），請翻譯成繁體中文（例如「ラーメン」翻成「拉麵」）。店名可保留原文。只回傳純JSON（無說明無markdown無代碼塊）：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額數字,"items":[{"name":"品項中文名","price":金額}]}`;
     const callAPI = async () => {
       const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
         method:'POST',
@@ -1750,8 +1763,9 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
               <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>拍照或選擇收據照片</div>
             </>)}
           </label>
-          {error && <div style={{ color:C.danger, fontSize:13, marginTop:12, textAlign:'center' }}>{error}</div>}
-          <button onClick={recognize} disabled={!photoData} style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer', opacity:photoData?1:0.5 }}>✨ 辨識收據</button>
+          {status && <div style={{ color:C.blue, fontSize:13, marginTop:12, textAlign:'center' }}>{status}</div>}
+          {error && <div style={{ color:C.danger, fontSize:13, marginTop:12, textAlign:'center', lineHeight:1.5 }}>{error}</div>}
+          <button onClick={recognize} disabled={!photoData} style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer', opacity:photoData?1:0.5 }}>{photo&&!photoData&&!error ? '圖片處理中...' : '✨ 辨識收據'}</button>
         </>)}
 
         {step==='loading' && (
@@ -5448,4 +5462,3 @@ export default function App() {
   if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} />{inviteDialog}</ErrorBoundary>;
   return <>{<TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />}{inviteDialog}</>;
 }
-
