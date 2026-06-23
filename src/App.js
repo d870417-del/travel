@@ -1607,7 +1607,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
   const recognize = async () => {
     if(!photoData) return;
     setStep('loading'); setError('');
-    const prompt = `辨識收據，回傳純JSON（無說明無markdown）：{"store":"店名","currency":"JPY|KRW|TWD|USD","total":總額數字,"items":[{"name":"品項","price":金額}]}`;
+    const prompt = `這是一張餐廳或商店收據。請仔細辨識：店名、幣別、每個品項名稱與價格、總金額。注意總金額通常標示「總金額」「合計」「TOTAL」。只回傳純JSON（無說明無markdown無代碼塊）：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額數字,"items":[{"name":"品項","price":金額}]}`;
     const callAPI = async () => {
       const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
         method:'POST',
@@ -1616,27 +1616,14 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       });
       return resp.json();
     };
-    try {
-      let data, attempts = 0;
-      while (attempts < 3) {
-        data = await callAPI();
-        // 流量過高時自動重試
-        if (data.error && /high demand|overloaded|503|429/i.test(data.error.message||'')) {
-          attempts++;
-          if (attempts < 3) { await new Promise(r=>setTimeout(r, 2000*attempts)); continue; }
-        }
-        break;
-      }
+    const parseReceipt = (data) => {
       if(data.error) throw new Error(data.error.message);
       const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       let clean = raw.replace(/```json|```/g,'').trim();
-      // 修復被截斷的 JSON
       if(clean && !clean.endsWith('}')){
-        // 移除最後一個不完整的物件
         const lastComplete = clean.lastIndexOf('}');
         if(lastComplete>0){
           clean = clean.slice(0, lastComplete+1);
-          // 補上陣列和物件的結尾
           const openArr = (clean.match(/\[/g)||[]).length;
           const closeArr = (clean.match(/\]/g)||[]).length;
           const openObj = (clean.match(/\{/g)||[]).length;
@@ -1645,7 +1632,28 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
           clean += '}'.repeat(Math.max(0,openObj-closeObj));
         }
       }
-      const p = JSON.parse(clean);
+      return JSON.parse(clean);
+    };
+    try {
+      let p = null, lastErr = null;
+      for (let attempt=0; attempt<3; attempt++) {
+        try {
+          const data = await callAPI();
+          // 流量過高 → 等一下重試
+          if (data.error && /high demand|overloaded|503|429/i.test(data.error.message||'')) {
+            lastErr = new Error(data.error.message);
+            await new Promise(r=>setTimeout(r, 2000*(attempt+1)));
+            continue;
+          }
+          p = parseReceipt(data);
+          break; // 成功
+        } catch(err) {
+          lastErr = err;
+          // JSON 解析失敗等 → 短暫等待後重試
+          if (attempt < 2) await new Promise(r=>setTimeout(r, 1000));
+        }
+      }
+      if (!p) throw lastErr || new Error('辨識失敗');
       // 清掉無意義的範本店名
       if(p.store && /^(receipt|收據|store|商店)$/i.test(p.store.trim())) p.store='';
       setParsed(p);
@@ -1653,8 +1661,8 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       if(p.items) p.items.forEach(it=>{ it.sharedBy = members.map(m=>m.uid); });
       setStep('confirm');
     } catch(e) {
-      const msg = /high demand|overloaded/i.test(e?.message||'') ? 'Gemini 暫時太忙，請稍等幾秒再試一次' : (e?.message||'請換清楚一點的照片');
-      setError('辨識失敗：'+msg);
+      const msg = /high demand|overloaded/i.test(e?.message||'') ? 'Gemini 暫時太忙，請稍等幾秒再試' : '辨識不順，請再試一次或換清楚的照片';
+      setError(msg);
       setStep('upload');
     }
   };
