@@ -1540,8 +1540,19 @@ function TripDetailScreen({ user, trip, onBack }) {
         pdf.addImage(imgData, 'JPEG', 0, pos, imgW, imgH);
         heightLeft -= ph;
       }
-      // 用 Blob 方式下載 PDF，分享時只會帶 PDF 檔本身，不帶網頁網址
+      // 優先用 Web Share API 直接分享檔案（不帶網址）
       const pdfBlob = pdf.output('blob');
+      const file = new File([pdfBlob], `${filename}.pdf`, { type:'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files:[file] })) {
+        try {
+          await navigator.share({ files:[file], title:filename });
+          return;
+        } catch(shareErr) {
+          if (shareErr.name === 'AbortError') return; // 使用者取消
+          // 其他錯誤則往下走，改用下載
+        }
+      }
+      // 後備：直接下載 PDF 檔
       const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -2164,7 +2175,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               {/* 交通格子 */}
               {dayFlights.length>0 && (
                 <div style={{ marginBottom:10, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.warm, marginBottom:6 }}>✈️ 今日交通</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.warm, marginBottom:6 }}>交通資訊</div>
                   {dayFlights.map(t=>(
                     <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
                       <span style={{ fontSize:16 }}>{t.type==='flight'?'✈️':'🚄'}</span>
@@ -2179,7 +2190,7 @@ function TripDetailScreen({ user, trip, onBack }) {
               {/* 住宿格子 */}
               {allLodge.length>0 && (
                 <div style={{ marginBottom:14, padding:'12px 14px', backgroundColor:C.warmSoft, borderRadius:14, border:`1px solid ${C.warmBorder}` }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.warm, marginBottom:6 }}>🛏 今日住宿</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.warm, marginBottom:6 }}>住宿資訊</div>
                   {dayLodgings.map(l=>(
                     <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0' }}>
                       <span style={{ fontSize:16 }}>🛏</span>
