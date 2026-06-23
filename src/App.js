@@ -1607,27 +1607,41 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
   const recognize = async () => {
     if(!photoData) return;
     setStep('loading'); setError('');
-    try {
-      const prompt = `你是收據辨識助手。請分析這張收據圖片，辨識店名、各品項與金額、總金額、幣別。只回傳純 JSON（不要說明、不要 markdown）：
+    const prompt = `你是收據辨識助手。請分析這張收據圖片，辨識店名、各品項與金額、總金額、幣別。只回傳純 JSON（不要說明、不要 markdown）：
 {"store":"店名","currency":"JPY|KRW|TWD|USD","total":總金額數字,"items":[{"name":"品項名","price":金額數字}]}`;
+    const callAPI = async () => {
       const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'x-goog-api-key':GEMINI_KEY },
         body: JSON.stringify({ contents:[{ parts:[ { inline_data:{ mime_type:photoMime, data:photoData } }, { text:prompt } ] }], generationConfig:{ maxOutputTokens:2048, temperature:0.1 } })
       });
-      const data = await resp.json();
+      return resp.json();
+    };
+    try {
+      let data, attempts = 0;
+      while (attempts < 3) {
+        data = await callAPI();
+        // 流量過高時自動重試
+        if (data.error && /high demand|overloaded|503|429/i.test(data.error.message||'')) {
+          attempts++;
+          if (attempts < 3) { await new Promise(r=>setTimeout(r, 2000*attempts)); continue; }
+        }
+        break;
+      }
       if(data.error) throw new Error(data.error.message);
       const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       let clean = raw.replace(/```json|```/g,'').trim();
       if(clean && !clean.endsWith('}')){ const lb=clean.lastIndexOf('}'); if(lb>0) clean=clean.slice(0,lb+1); }
       const p = JSON.parse(clean);
+      // 清掉無意義的範本店名
+      if(p.store && /^(receipt|收據|store|商店)$/i.test(p.store.trim())) p.store='';
       setParsed(p);
       if(p.currency) setCurrency(p.currency);
-      // 預設每個品項分配給付款人
-      if(p.items) p.items.forEach(it=>{ it.assignTo = 'all'; });
+      if(p.items) p.items.forEach(it=>{ it.sharedBy = members.map(m=>m.uid); });
       setStep('confirm');
     } catch(e) {
-      setError('辨識失敗：'+(e?.message||'請換清楚一點的照片'));
+      const msg = /high demand|overloaded/i.test(e?.message||'') ? 'Gemini 暫時太忙，請稍等幾秒再試一次' : (e?.message||'請換清楚一點的照片');
+      setError('辨識失敗：'+msg);
       setStep('upload');
     }
   };
@@ -1636,7 +1650,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
 
   const apply = () => {
     const total = Number(parsed.total)||parsed.items?.reduce((s,it)=>s+Number(it.price||0),0)||0;
-    const store = parsed.store||'收據';
+    const store = (parsed.store||'').trim() || (parsed.items?.[0]?.name) || '消費';
     const now = Date.now();
     const today = new Date();
     const dateStr = `${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
@@ -1646,26 +1660,31 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
       const item = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據', editedById:payerId, editedByName:memberName(payerId), contributorIds:members.map(m=>m.uid), forMemberIds:members.map(m=>m.uid) };
       const n=[...walletItems,item]; setWalletItems(n); saveWallet(n);
     } else if(mode==='split') {
-      // 整單平分：payer 幫 splitMembers 代墊
+      // 整單平分：payer 幫 splitMembers 代墊，每人均攤
       const share = Math.floor(total/splitMembers.length);
       const newRecords = splitMembers.filter(uid=>uid!==payerId).map((uid,i)=>({
         id:now+i, payerId, receiverId:uid, amount:share, currency, note:store, date:dateStr, settled:false, createdAt:now+i
       }));
-      const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
+      const n=[...splitRecords,...newRecords]; setSplitRecords(n); setSplitRecords&&saveSplitRecords(n);
     } else {
-      // 逐項分配
-      const byMember = {};
+      // 逐項分配：每個品項由 sharedBy 名單平分，payer 幫其他人代墊
+      const byMember = {}; // receiverId -> {amount, items:[品項名]}
       parsed.items.forEach(it=>{
         const price = Number(it.price)||0;
-        if(it.assignTo==='all'){
-          const share = Math.floor(price/splitMembers.length);
-          splitMembers.forEach(uid=>{ if(uid!==payerId) byMember[uid]=(byMember[uid]||0)+share; });
-        } else if(it.assignTo!==payerId){
-          byMember[it.assignTo]=(byMember[it.assignTo]||0)+price;
-        }
+        const sharers = (it.sharedBy||[]).filter(Boolean);
+        if(sharers.length===0 || price<=0) return;
+        const share = Math.floor(price/sharers.length);
+        sharers.forEach(uid=>{
+          if(uid!==payerId){
+            if(!byMember[uid]) byMember[uid] = { amount:0, items:[] };
+            byMember[uid].amount += share;
+            byMember[uid].items.push(it.name);
+          }
+        });
       });
-      const newRecords = Object.entries(byMember).filter(([uid,amt])=>amt>0).map(([uid,amt],i)=>({
-        id:now+i, payerId, receiverId:uid, amount:amt, currency, note:store, date:dateStr, settled:false, createdAt:now+i
+      const newRecords = Object.entries(byMember).filter(([uid,v])=>v.amount>0).map(([uid,v],i)=>({
+        id:now+i, payerId, receiverId:uid, amount:v.amount, currency,
+        note:`${store}（${v.items.join('、')}）`, date:dateStr, settled:false, createdAt:now+i
       }));
       const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
     }
@@ -1706,8 +1725,20 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
 
         {step==='confirm' && parsed && (<>
           <div style={{ marginBottom:16, padding:'12px 14px', backgroundColor:C.bg, borderRadius:12 }}>
-            <div style={{ fontSize:15, fontWeight:800 }}>{parsed.store||'收據'}</div>
-            <div style={{ fontSize:20, fontWeight:900, color:C.blue, marginTop:4 }}>{SYM[currency]||''}{(Number(parsed.total)||0).toLocaleString()}</div>
+            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>店名（可修改）</div>
+            <input value={parsed.store||''} onChange={e=>setParsed(p=>({...p,store:e.target.value}))} placeholder="店名" style={{ ...gs.input, fontWeight:800, fontSize:15, marginBottom:8 }}/>
+            <div style={{ fontSize:20, fontWeight:900, color:C.blue }}>{SYM[currency]||''}{(Number(parsed.total)||0).toLocaleString()}</div>
+            {parsed.items && parsed.items.length>0 && (
+              <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:11, color:C.textMuted, marginBottom:6 }}>品項明細</div>
+                {parsed.items.map((it,i)=>(
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'2px 0' }}>
+                    <span>{it.name}</span>
+                    <span style={{ color:C.textMuted }}>{SYM[currency]||''}{Number(it.price||0).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 付款人 */}
@@ -1727,42 +1758,97 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
             ))}
           </div>
 
-          {/* 平分對象 */}
-          {(mode==='split'||mode==='items') && (
+          {/* 平分對象（整單平分用） */}
+          {mode==='split' && (
             <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>{mode==='split'?'平分給誰':'平分品項給誰'}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>平分給誰</div>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 {members.map(m=>(
                   <button key={m.uid} onClick={()=>setSplitMembers(s=>s.includes(m.uid)?s.filter(x=>x!==m.uid):[...s,m.uid])}
                     style={{ padding:'6px 12px', borderRadius:8, border:`1.5px solid ${splitMembers.includes(m.uid)?C.blue:C.border}`, backgroundColor:splitMembers.includes(m.uid)?C.blueSoft:C.bg, color:splitMembers.includes(m.uid)?C.blue:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>{m.displayName}</button>
                 ))}
               </div>
+              {splitMembers.length>0 && (
+                <div style={{ fontSize:11, color:C.textMuted, marginTop:8 }}>
+                  {splitMembers.length} 人均攤，每人 {SYM[currency]||''}{Math.floor((Number(parsed.total)||0)/splitMembers.length).toLocaleString()}
+                </div>
+              )}
             </div>
           )}
 
           {/* 逐項分配 */}
           {mode==='items' && parsed.items && (
             <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:8 }}>品項明細</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {parsed.items.map((it,i)=>(
-                  <div key={i} style={{ padding:'10px 12px', backgroundColor:C.bg, borderRadius:10 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                      <span style={{ fontSize:14, fontWeight:700 }}>{it.name}</span>
-                      <span style={{ fontSize:14, fontWeight:700 }}>{SYM[currency]||''}{Number(it.price||0).toLocaleString()}</span>
+              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:8 }}>每個品項由誰分攤</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {parsed.items.map((it,i)=>{
+                  const sharers = (it.sharedBy||[]).filter(Boolean);
+                  const perPerson = sharers.length>0 ? Math.floor(Number(it.price||0)/sharers.length) : 0;
+                  return (
+                    <div key={i} style={{ padding:'12px', backgroundColor:C.bg, borderRadius:12 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                        <span style={{ fontSize:14, fontWeight:700 }}>{it.name}</span>
+                        <span style={{ fontSize:14, fontWeight:800 }}>{SYM[currency]||''}{Number(it.price||0).toLocaleString()}</span>
+                      </div>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:6 }}>
+                        {members.map(m=>{
+                          const on = sharers.includes(m.uid);
+                          return (
+                            <button key={m.uid} onClick={()=>{
+                              setParsed(p=>({...p, items:p.items.map((x,j)=>{
+                                if(j!==i) return x;
+                                const cur = (x.sharedBy||[]).filter(Boolean);
+                                return {...x, sharedBy: on ? cur.filter(u=>u!==m.uid) : [...cur, m.uid]};
+                              })}));
+                            }} style={{ padding:'4px 10px', borderRadius:8, border:`1.5px solid ${on?C.blue:C.border}`, backgroundColor:on?C.blueSoft:C.surface, color:on?C.blue:C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{m.displayName}</button>
+                          );
+                        })}
+                      </div>
+                      {sharers.length>0 && (
+                        <div style={{ fontSize:11, color:C.textMuted }}>
+                          {sharers.length} 人分攤，每人 {SYM[currency]||''}{perPerson.toLocaleString()}
+                        </div>
+                      )}
                     </div>
-                    <select value={it.assignTo} onChange={e=>{ const v=e.target.value; setParsed(p=>({...p, items:p.items.map((x,j)=>j===i?{...x,assignTo:v}:x)})); }} style={{ ...gs.input, fontSize:12, padding:'6px 10px', appearance:'none' }}>
-                      <option value="all">大家平分</option>
-                      {members.map(m=><option key={m.uid} value={m.uid}>{m.displayName}</option>)}
-                    </select>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
+          {/* 我的分攤摘要 */}
+          {(()=>{
+            let myShare = 0, payerLabel = '';
+            const total = Number(parsed.total)||0;
+            if(mode==='split'){
+              if(splitMembers.includes(user.uid)) myShare = Math.floor(total/splitMembers.length);
+            } else if(mode==='items'){
+              parsed.items?.forEach(it=>{
+                const sharers=(it.sharedBy||[]).filter(Boolean);
+                if(sharers.includes(user.uid) && sharers.length>0) myShare += Math.floor(Number(it.price||0)/sharers.length);
+              });
+            }
+            if(mode==='pool') return null;
+            const iPaid = payerId===user.uid;
+            return (
+              <div style={{ marginBottom:16, padding:'12px 14px', backgroundColor:iPaid?C.greenSoft:C.dangerSoft, borderRadius:12 }}>
+                {iPaid ? (
+                  <div style={{ fontSize:13, color:C.text }}>
+                    <span style={{ fontWeight:700 }}>你付了全額 {SYM[currency]||''}{total.toLocaleString()}</span>，
+                    其中你自己分攤 {SYM[currency]||''}{myShare.toLocaleString()}，
+                    其他人需還你 <span style={{ fontWeight:800, color:C.green }}>{SYM[currency]||''}{(total-myShare).toLocaleString()}</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize:13, color:C.text }}>
+                    由 {memberName(payerId)} 付款，
+                    <span style={{ fontWeight:800, color:C.danger }}>你需要付 {SYM[currency]||''}{myShare.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div style={{ display:'flex', gap:10 }}>
-            <button onClick={()=>setStep('upload')} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>↩ 重拍</button>
             <button onClick={apply} style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer' }}>✓ 建立帳目</button>
           </div>
         </>)}
@@ -2965,7 +3051,8 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:30 }}>
           <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
-          <div style={{ fontSize:15, fontWeight:800 }}>🔄 代墊結算</div>
+          <div style={{ fontSize:15, fontWeight:800, flex:1 }}>代墊結算</div>
+          <button onClick={()=>setReceiptModal({open:true})} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📷 拍收據</button>
         </div>
 
         <div style={{ padding:16, flex:1 }}>
