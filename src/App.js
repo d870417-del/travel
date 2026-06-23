@@ -2790,6 +2790,23 @@ function TripDetailScreen({ user, trip, onBack }) {
             ✨ AI 一鍵排行程
           </button>
         )}
+        {selectedDate!=='待安排' && filteredItinerary.length>0 && (() => {
+          const places = filteredItinerary
+            .map(it => (it.location||it.name||'').trim())
+            .filter(Boolean);
+          if(places.length===0) return null;
+          const dest = (trip.destinations||trip.name||'');
+          // 每個地點加上目的地，提升 Google Maps 搜尋準確度
+          const query = places.map(p => encodeURIComponent(dest ? `${p} ${dest}` : p)).join('/');
+          const url = places.length===1
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dest?`${places[0]} ${dest}`:places[0])}`
+            : `https://www.google.com/maps/dir/${query}`;
+          return (
+            <button onClick={()=>window.open(url,'_blank')} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer' }}>
+              🗺 在地圖看當天行程（{places.length} 個地點）
+            </button>
+          );
+        })()}
         {filteredItinerary.length===0 ? (
           <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>
             {selectedDate==='待安排' ? '把想去的地方加到待安排，再用 AI 一鍵排行程' : '尚無行程，點右下角 ＋ 新增'}
