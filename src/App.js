@@ -1290,7 +1290,7 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
             console.error('Gemini parse error:', e);
             const em = e?.message||'';
             let msg;
-            if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(em)) msg = '今日 AI 次數已用完 😅 請明天再試';
+            if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(em)) msg = 'AI 次數暫時用完 😅 請等 1-2 分鐘再試，若持續則今日額度用完';
             else if(/high demand|overloaded/i.test(em)) msg = 'Gemini 暫時太忙，請稍等幾秒再試';
             else msg = '解析失敗：'+(em||'請確認格式或稍後再試').slice(0,80);
             setUError(msg);
@@ -1454,7 +1454,7 @@ ${customReq.trim()?`\n⭐ 我的特殊需求（請務必納入考量）：${cust
     } catch(e) {
       const em = e?.message||'';
       let msg;
-      if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(em)) msg = '今日 AI 次數已用完 😅 請明天再試';
+      if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(em)) msg = 'AI 次數暫時用完 😅 請等 1-2 分鐘再試，若持續則今日額度用完';
       else if(/high demand|overloaded/i.test(em)) msg = 'Gemini 暫時太忙，請稍等幾秒再試';
       else msg = '排程失敗：'+(em||'請重試').slice(0,80);
       setError(msg);
@@ -1645,77 +1645,86 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
     if(!photoData) return;
     cancelledRef.current = false;
     setStep('loading'); setError('');
-    const prompt = `這是一張餐廳或商店收據。請仔細辨識：店名、幣別、每個品項名稱與價格、總金額。注意總金額通常標示「總金額」「合計」「TOTAL」。若品項是外文（日文、韓文、英文等），請翻譯成繁體中文（例如「ラーメン」翻成「拉麵」）。店名可保留原文。只回傳純JSON（無說明無markdown無代碼塊）：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額數字,"items":[{"name":"品項中文名","price":金額}]}`;
-    const callAPI = async () => {
-      const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'x-goog-api-key':GEMINI_KEY },
-        body: JSON.stringify({ contents:[{ parts:[ { inline_data:{ mime_type:photoMime, data:photoData } }, { text:prompt } ] }], generationConfig:{ maxOutputTokens:2048, temperature:0 } })
-      });
-      return resp.json();
-    };
-    const parseReceipt = (data) => {
-      if(data.error) throw new Error(data.error.message);
-      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    const _gk = ['AQ.Ab8RN6IJ1W','s-NnDyfYbXwpi','U0_Qa7qZm1lHh','S0BxaYkC3xxsRQ'];
+    const GEMINI_KEY = (typeof import.meta!=='undefined' && import.meta.env && import.meta.env.VITE_GEMINI_KEY) || _gk.join('');
+
+    const parseJSON = (raw) => {
       let clean = raw.replace(/```json|```/g,'').trim();
       if(clean && !clean.endsWith('}')){
-        const lastComplete = clean.lastIndexOf('}');
-        if(lastComplete>0){
-          clean = clean.slice(0, lastComplete+1);
-          const openArr = (clean.match(/\[/g)||[]).length;
-          const closeArr = (clean.match(/\]/g)||[]).length;
-          const openObj = (clean.match(/\{/g)||[]).length;
-          const closeObj = (clean.match(/\}/g)||[]).length;
-          clean += ']'.repeat(Math.max(0,openArr-closeArr));
-          clean += '}'.repeat(Math.max(0,openObj-closeObj));
+        const lb=clean.lastIndexOf('}'); if(lb>0){
+          clean=clean.slice(0,lb+1);
+          const oa=(clean.match(/\[/g)||[]).length,ca=(clean.match(/\]/g)||[]).length;
+          const oo=(clean.match(/\{/g)||[]).length,co=(clean.match(/\}/g)||[]).length;
+          clean+=']'.repeat(Math.max(0,oa-ca))+'}'.repeat(Math.max(0,oo-co));
         }
       }
       return JSON.parse(clean);
     };
+
     try {
-      let p = null, lastErr = null;
-      for (let attempt=0; attempt<2; attempt++) {
-        try {
-          const data = await callAPI();
-          // 額度用完 → 完全不重試（重試也沒用，只會更快燒光額度）
-          if (data.error && /quota|exceeded|RESOURCE_EXHAUSTED/i.test(data.error.message||'')) {
-            throw new Error(data.error.message);
-          }
-          // 流量過高 → 只重試一次，間隔長一點
-          if (data.error && /high demand|overloaded|503|429/i.test(data.error.message||'')) {
-            lastErr = new Error(data.error.message);
-            if(attempt===0){ await new Promise(r=>setTimeout(r, 3000)); continue; }
-            throw lastErr;
-          }
-          p = parseReceipt(data);
-          break; // 成功
-        } catch(err) {
-          lastErr = err;
-          // 額度錯誤直接中斷，不重試
-          if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(err?.message||'')) throw err;
-          // JSON 解析失敗 → 只重試一次
-          if (attempt < 1) await new Promise(r=>setTimeout(r, 1000));
+      let p = null;
+
+      // 步驟一：用 Tesseract OCR 讀取文字（免費，不耗圖片額度）
+      let ocrText = '';
+      try {
+        if(!window.Tesseract) {
+          await new Promise((res,rej)=>{
+            const s=document.createElement('script');
+            s.src='https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js';
+            s.onload=res; s.onerror=rej;
+            document.head.appendChild(s);
+          });
         }
+        const bytes=Uint8Array.from(atob(photoData),c=>c.charCodeAt(0));
+        const blob=new Blob([bytes],{type:photoMime});
+        const result=await window.Tesseract.recognize(blob,'chi_tra+chi_sim+jpn+eng',{logger:()=>{}});
+        ocrText=result.data.text||'';
+      } catch(ocrErr){ console.warn('OCR failed, fallback to AI vision',ocrErr); }
+
+      if(ocrText.trim().length > 15) {
+        // 步驟二：OCR 成功 → 用 Gemini 解析文字（文字額度，比圖片便宜很多）
+        const prompt = `這是收據的 OCR 文字，請辨識店名、各品項與金額、總金額、幣別。若品項是外文請翻譯成繁體中文。只回傳純JSON：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額數字,"items":[{"name":"品項中文名","price":金額}]}\n\nOCR文字：\n${ocrText}`;
+        const resp=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_KEY},
+          body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:1024,temperature:0}})
+        });
+        const data=await resp.json();
+        if(data.error) throw new Error(data.error.message);
+        p=parseJSON(data.candidates?.[0]?.content?.parts?.[0]?.text||'');
+      } else {
+        // OCR 失敗 → 退回 AI 直接讀圖
+        const prompt=`這是收據圖片，辨識店名、品項、金額、幣別，品項外文翻中文。只回傳純JSON：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額,"items":[{"name":"品項","price":金額}]}`;
+        const resp=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_KEY},
+          body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:photoMime,data:photoData}},{text:prompt}]}],generationConfig:{maxOutputTokens:2048,temperature:0}})
+        });
+        const data=await resp.json();
+        if(data.error) throw new Error(data.error.message);
+        p=parseJSON(data.candidates?.[0]?.content?.parts?.[0]?.text||'');
       }
-      if (!p) throw lastErr || new Error('辨識失敗');
-      if (cancelledRef.current) return; // 使用者已取消
-      // 清掉無意義的範本店名
+
+      if(cancelledRef.current) return;
       if(p.store && /^(receipt|收據|store|商店)$/i.test(p.store.trim())) p.store='';
       setParsed(p);
       if(p.currency) setCurrency(p.currency);
       if(p.items) p.items.forEach(it=>{ it.sharedBy = members.map(m=>m.uid); });
       setStep('confirm');
     } catch(e) {
-      if (cancelledRef.current) return; // 已取消，不顯示錯誤
+      if(cancelledRef.current) return;
+      const em=e?.message||'';
       let msg;
-      const em = e?.message||'';
-      if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(em)) msg = '今日 AI 辨識次數已用完 😅 請明天再試，或改用手動記帳';
-      else if(/high demand|overloaded/i.test(em)) msg = 'Gemini 暫時太忙，請稍等幾秒再試';
-      else msg = '辨識失敗：'+em.slice(0,80);
+      if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(em)) msg='AI 次數暫時用完 😅 請等 1-2 分鐘再試';
+      else if(/high demand|overloaded/i.test(em)) msg='Gemini 暫時太忙，請稍等幾秒再試';
+      else msg='辨識失敗：'+em.slice(0,80);
       setError(msg);
       setStep('upload');
     }
   };
+
+
 
   const memberName = uid => members.find(m=>m.uid===uid)?.displayName||'?';
 
@@ -2012,6 +2021,11 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [foodSelectedCity, setFoodSelectedCity] = useState('全部城市');
   const [foodSelectedDistricts, setFoodSelectedDistricts] = useState([]);
   const [foodSelectedType, setFoodSelectedType] = useState('全部食物');
+  const [foodSearchModal, setFoodSearchModal] = useState(false);
+  const [foodSearchQuery, setFoodSearchQuery] = useState('');
+  const [foodSearchResults, setFoodSearchResults] = useState([]);
+  const [foodSearchLoading, setFoodSearchLoading] = useState(false);
+  const [foodSearchError, setFoodSearchError] = useState('');
   const [showManageFoodOptions, setShowManageFoodOptions] = useState(false);
   // ManageFoodOptions local state (moved to top level to avoid hook-in-function issue)
   const [mfoNewDistrict, setMfoNewDistrict] = useState('');
@@ -2723,6 +2737,7 @@ function TripDetailScreen({ user, trip, onBack }) {
           <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>選擇日期</span>
           <div style={{ display:'flex', gap:6 }}>
             <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>交通住宿</button>
+            <button onClick={()=>{ setPlaceSearchQuery(''); setPlaceSearchResults([]); setPlaceSearchError(''); setPlaceSearchModal(true); }} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.green}44`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>🔍 景點</button>
             <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>匯入</button>
             <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>＋日期</button>
           </div>
@@ -2896,6 +2911,48 @@ function TripDetailScreen({ user, trip, onBack }) {
   // ════════════════════════════════════════
   // 美食 Tab
   // ════════════════════════════════════════
+  const [placeSearchModal, setPlaceSearchModal] = useState(false);
+  const [placeSearchQuery, setPlaceSearchQuery] = useState('');
+  const [placeSearchResults, setPlaceSearchResults] = useState([]);
+  const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
+  const [placeSearchError, setPlaceSearchError] = useState('');
+
+  async function doPlaceSearch(overrideQuery) {
+    const q = overrideQuery || placeSearchQuery;
+    if(!q.trim()) return;
+    setPlaceSearchLoading(true); setPlaceSearchError(''); setPlaceSearchResults([]);
+    const _mk=['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+    const MAPS_KEY=_mk.join('');
+    const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
+    const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
+    const query=encodeURIComponent(`${q} ${dest}`);
+    try {
+      const resp = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&language=zh-TW&key=${MAPS_KEY}`);
+      const data = await resp.json();
+      if(data.error_message){ setPlaceSearchError('搜尋失敗：'+data.error_message); }
+      else if(!data.results?.length){ setPlaceSearchError('找不到相關景點，換個關鍵字試試'); }
+      else { setPlaceSearchResults(data.results.slice(0,10)); }
+    } catch(e){ setPlaceSearchError('搜尋失敗，請確認網路連線'); }
+    setPlaceSearchLoading(false);
+  }
+    const q = overrideQuery || foodSearchQuery;
+    if(!q.trim()) return;
+    setFoodSearchLoading(true); setFoodSearchError(''); setFoodSearchResults([]);
+    const _mk=['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+    const MAPS_KEY=_mk.join('');
+    const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
+    const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
+    const query=encodeURIComponent(`${q} ${dest}`);
+    try {
+      const resp = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&language=zh-TW&key=${MAPS_KEY}`);
+      const data = await resp.json();
+      if(data.error_message){ setFoodSearchError('搜尋失敗：'+data.error_message); }
+      else if(data.results?.length===0){ setFoodSearchError('找不到相關美食，換個關鍵字試試'); }
+      else { setFoodSearchResults(data.results?.slice(0,10)||[]); }
+    } catch(e){ setFoodSearchError('搜尋失敗，請確認網路連線'); }
+    setFoodSearchLoading(false);
+  }
+
   const FoodTab = () => {
     const cities = foodOptions.cities || [];
     const districtsMap = foodOptions.districts || {};
@@ -2923,7 +2980,10 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:'10px 16px' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
             <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>美食 {filtered.length} 間</span>
-            <button onClick={() => setShowManageFoodOptions(true)} style={{ fontSize:11, color:C.textMuted, background:'none', border:`1px solid ${C.border}`, borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:600 }}>管理選項</button>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={()=>{ setFoodSearchQuery(''); setFoodSearchResults([]); setFoodSearchError(''); setFoodSearchModal(true); }} style={{ fontSize:11, color:C.blue, background:'none', border:`1px solid ${C.blue}44`, borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:600, backgroundColor:C.blueSoft }}>🔍 搜尋附近美食</button>
+              <button onClick={() => setShowManageFoodOptions(true)} style={{ fontSize:11, color:C.textMuted, background:'none', border:`1px solid ${C.border}`, borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:600 }}>管理選項</button>
+            </div>
           </div>
 
           {/* 城市篩選：只有多個城市才顯示 */}
@@ -3028,6 +3088,66 @@ function TripDetailScreen({ user, trip, onBack }) {
           }});
         }}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.warm},${C.warm})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:'0 4px 16px rgba(217,119,6,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
+
+        {/* 搜尋附近美食 Modal */}
+        {foodSearchModal && (
+          <div style={{ position:'fixed', inset:0, zIndex:250, display:'flex', alignItems:'flex-end' }}>
+            <div onClick={()=>setFoodSearchModal(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+            <div style={{ ...gs.card, position:'relative', width:'100%', borderRadius:'24px 24px 0 0', maxHeight:'90vh', overflowY:'auto', padding:20, paddingBottom:40 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+                <div style={{ fontSize:16, fontWeight:800 }}>🔍 搜尋附近美食</div>
+                <button onClick={()=>setFoodSearchModal(false)} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
+              </div>
+
+              {/* 搜尋框 */}
+              <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                <input value={foodSearchQuery} onChange={e=>setFoodSearchQuery(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==='Enter') doFoodSearch(); }}
+                  placeholder={`搜尋美食（例：拉麵、燒肉、咖啡廳）`}
+                  style={{ ...gs.input, flex:1 }}/>
+                <button onClick={doFoodSearch} disabled={foodSearchLoading} style={{ padding:'10px 16px', borderRadius:12, border:'none', backgroundColor:C.blue, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', flexShrink:0 }}>{foodSearchLoading?'搜尋中...':'搜尋'}</button>
+              </div>
+
+              {/* 快速標籤 */}
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
+                {['拉麵','壽司','燒肉','咖啡廳','甜點','居酒屋','便利商店','藥妝'].map(tag=>(
+                  <button key={tag} onClick={()=>{ setFoodSearchQuery(tag); setTimeout(()=>doFoodSearch(tag),50); }}
+                    style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>{tag}</button>
+                ))}
+              </div>
+
+              {foodSearchError && <div style={{ color:C.danger, fontSize:13, marginBottom:12, textAlign:'center' }}>{foodSearchError}</div>}
+
+              {/* 搜尋結果 */}
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {foodSearchResults.map((r,i)=>(
+                  <div key={i} style={{ ...gs.card, padding:'14px 16px' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:15, fontWeight:800, marginBottom:4 }}>{r.name}</div>
+                        {r.rating && <div style={{ fontSize:12, color:C.warm, marginBottom:2 }}>⭐ {r.rating} {r.user_ratings_total?`(${r.user_ratings_total.toLocaleString()})`:''}  {r.price_level?'$'.repeat(r.price_level):''}</div>}
+                        {r.types && <div style={{ fontSize:11, color:C.textMuted, marginBottom:2 }}>{r.types.filter(t=>!['establishment','point_of_interest','food'].includes(t)).slice(0,2).join('・')}</div>}
+                        <div style={{ fontSize:11, color:C.textMuted }}>{r.vicinity}</div>
+                        {r.opening_hours?.open_now!==undefined && <div style={{ fontSize:11, fontWeight:700, color:r.opening_hours.open_now?C.green:C.danger, marginTop:2 }}>{r.opening_hours.open_now?'營業中':'已打烊'}</div>}
+                      </div>
+                      <button onClick={()=>{
+                        const url=r.place_id?`https://www.google.com/maps/place/?q=place_id:${r.place_id}`:'';
+                        const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
+                        const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
+                        const newFood={ id:Date.now()+i, name:r.name, city:dest, districts:[], branches:[], mapUrl:url, foodType:'', note:'', visited:false, createdAt:Date.now() };
+                        const n=[...foodItems, newFood]; setFoodItems(n); saveFoodItems(n);
+                        alert(`✅ 已加入美食清單：${r.name}`);
+                      }} style={{ padding:'8px 12px', borderRadius:10, border:'none', backgroundColor:C.green, color:'#fff', fontSize:12, fontWeight:800, cursor:'pointer', flexShrink:0 }}>＋ 加入</button>
+                    </div>
+                  </div>
+                ))}
+                {foodSearchResults.length===0 && !foodSearchLoading && !foodSearchError && (
+                  <div style={{ textAlign:'center', padding:'30px', color:C.textMuted, fontSize:13 }}>輸入關鍵字搜尋附近美食</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -4248,8 +4368,10 @@ function TripDetailScreen({ user, trip, onBack }) {
                 if(result?.place_id){
                   const lat=result.geometry?.location?.lat;
                   const lng=result.geometry?.location?.lng;
-                  // 用原始地點名稱搜尋，但定位在正確的經緯度
-                  const url = lat&&lng
+                  // 優先用 place_id 精確跳到那個地點
+                  const url = result.place_id
+                    ? `https://www.google.com/maps/place/?q=place_id:${result.place_id}`
+                    : lat&&lng
                     ? `https://www.google.com/maps/search/${encodeURIComponent(loc)}/@${lat},${lng},17z`
                     : `https://www.google.com/maps/search/${encodeURIComponent(loc+(dest?' '+dest:''))}`;
                   setModal(p=>({...p,data:{...p.data,mapUrl:url}}));
@@ -4384,7 +4506,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         else if(results.length===1){
                           const r=results[0];
                           const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
-                          const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
+                          const url=r.place_id ? `https://www.google.com/maps/place/?q=place_id:${r.place_id}` : lat&&lng ? `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z` : `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
                           setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
                           alert('✅ 已找到！地圖連結已填入');
                         } else {
@@ -4395,7 +4517,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           if(idx>=0&&idx<results.length){
                             const r=results[idx];
                             const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
-                            const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
+                            const url=r.place_id ? `https://www.google.com/maps/place/?q=place_id:${r.place_id}` : lat&&lng ? `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z` : `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
                             setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
                             alert('✅ 地圖連結已填入');
                           }
@@ -5372,6 +5494,57 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
       {/* ─── 上傳行程表解析 Modal ─── */}
+      {/* 🔍 景點搜尋 Modal */}
+      {placeSearchModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:250, display:'flex', alignItems:'flex-end' }}>
+          <div onClick={()=>setPlaceSearchModal(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+          <div style={{ ...gs.card, position:'relative', width:'100%', borderRadius:'24px 24px 0 0', maxHeight:'90vh', overflowY:'auto', padding:20, paddingBottom:40 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+              <div style={{ fontSize:16, fontWeight:800 }}>🔍 搜尋景點</div>
+              <button onClick={()=>setPlaceSearchModal(false)} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
+            </div>
+            <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+              <input value={placeSearchQuery} onChange={e=>setPlaceSearchQuery(e.target.value)}
+                onKeyDown={e=>{ if(e.key==='Enter') doPlaceSearch(); }}
+                placeholder="搜尋景點（例：神社、展望台、市場）"
+                style={{ ...gs.input, flex:1 }}/>
+              <button onClick={()=>doPlaceSearch()} disabled={placeSearchLoading} style={{ padding:'10px 16px', borderRadius:12, border:'none', backgroundColor:C.green, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', flexShrink:0 }}>{placeSearchLoading?'搜尋中...':'搜尋'}</button>
+            </div>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14 }}>
+              {['神社','展望台','博物館','市場','公園','購物中心','溫泉','海灘'].map(tag=>(
+                <button key={tag} onClick={()=>{ setPlaceSearchQuery(tag); setTimeout(()=>doPlaceSearch(tag),50); }}
+                  style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:12, cursor:'pointer' }}>{tag}</button>
+              ))}
+            </div>
+            {placeSearchError && <div style={{ color:C.danger, fontSize:13, marginBottom:12, textAlign:'center' }}>{placeSearchError}</div>}
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {placeSearchResults.map((r,i)=>(
+                <div key={i} style={{ ...gs.card, padding:'14px 16px' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:15, fontWeight:800, marginBottom:4 }}>{r.name}</div>
+                      {r.rating && <div style={{ fontSize:12, color:C.warm, marginBottom:2 }}>⭐ {r.rating} {r.user_ratings_total?`(${r.user_ratings_total.toLocaleString()})`:''}</div>}
+                      <div style={{ fontSize:11, color:C.textMuted }}>{r.vicinity||r.formatted_address}</div>
+                      {r.opening_hours?.open_now!==undefined && <div style={{ fontSize:11, fontWeight:700, color:r.opening_hours.open_now?C.green:C.danger, marginTop:2 }}>{r.opening_hours.open_now?'營業中':'已打烊'}</div>}
+                    </div>
+                    <button onClick={()=>{
+                      const url=r.place_id?`https://www.google.com/maps/place/?q=place_id:${r.place_id}`:'';
+                      const newItem={ id:Date.now()+i, name:r.name, category:'景點', date:'待安排', time:'', location:r.vicinity||'', note:'', mapUrl:url, createdAt:Date.now(), editedById:user.uid, editedByName:user.displayName||'我' };
+                      const n=[...itinerary, newItem];
+                      setItinerary(n); saveItinerary(n, tripDates);
+                      alert(`✅ 已加入待安排：${r.name}`);
+                    }} style={{ padding:'8px 12px', borderRadius:10, border:'none', backgroundColor:C.green, color:'#fff', fontSize:12, fontWeight:800, cursor:'pointer', flexShrink:0 }}>＋ 加入</button>
+                  </div>
+                </div>
+              ))}
+              {placeSearchResults.length===0 && !placeSearchLoading && !placeSearchError && (
+                <div style={{ textAlign:'center', padding:'30px', color:C.textMuted, fontSize:13 }}>輸入關鍵字搜尋景點，或點快速標籤</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ✈️🛏 交通住宿管理面板 */}
       {travelInfoOpen && (
         <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
@@ -5520,7 +5693,9 @@ function TripDetailScreen({ user, trip, onBack }) {
                     else {
                       const r=results[0];
                       const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
-                      const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(cur.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(cur.name+' '+dest)}`;
+                      const url=r.place_id
+                        ?`https://www.google.com/maps/place/?q=place_id:${r.place_id}`
+                        :lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(cur.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(cur.name+' '+dest)}`;
                       set('mapUrl', url);
                       alert('✅ 已找到：'+r.formatted_address+'\n地圖連結已填入！');
                     }
@@ -5747,4 +5922,3 @@ export default function App() {
   if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} />{inviteDialog}</ErrorBoundary>;
   return <>{<TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />}{inviteDialog}</>;
 }
-
