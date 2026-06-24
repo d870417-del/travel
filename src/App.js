@@ -1228,20 +1228,56 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
             if (uMode==='file' && uFileType==='excel') {
               const XLSX = await loadXLSXlib();
               const wb = XLSX.read(uFileData, { type:'array' });
-              const ws = wb.Sheets[wb.SheetNames[0]];
-              const rows = XLSX.utils.sheet_to_json(ws, { header:1 });
-              const header = (rows[0]||[]).map(h=>String(h||'').trim());
-              const col = name => header.findIndex(h=>h.includes(name));
-              const ci = { date:col('日期'), time:col('時間'), cat:col('類別'), name:col('名稱'), loc:col('地點'), note:col('備註') };
-              const items = rows.slice(1).filter(r=>r&&(r[ci.name]||r[ci.date])).map(r=>({
+
+              // 掃所有工作表，找最多有效資料的那張
+              let bestRows = [], bestHeader = [];
+              for(const sheetName of wb.SheetNames){
+                const ws = wb.Sheets[sheetName];
+                const allRows = XLSX.utils.sheet_to_json(ws, { header:1 });
+                // 找 header 行（包含「名稱」「景點」「行程」等關鍵字的那行）
+                let headerIdx = 0;
+                for(let i=0;i<Math.min(allRows.length,10);i++){
+                  const row = (allRows[i]||[]).map(h=>String(h||''));
+                  if(row.some(h=>/名稱|景點|行程|time|date|活動/i.test(h))){
+                    headerIdx=i; break;
+                  }
+                }
+                const header=(allRows[headerIdx]||[]).map(h=>String(h||'').trim());
+                const rows=allRows.slice(headerIdx+1).filter(r=>r&&r.some(c=>c));
+                if(rows.length > bestRows.length){ bestRows=rows; bestHeader=header; }
+              }
+
+              // 彈性欄位匹配：支援各種欄位名稱
+              const col = (...names) => {
+                for(const name of names){
+                  const idx = bestHeader.findIndex(h=>h.includes(name));
+                  if(idx>=0) return idx;
+                }
+                return -1;
+              };
+              const ci = {
+                date: col('日期'),
+                time: col('時間'),
+                cat:  col('類別','分類','種類'),
+                name: col('名稱','景點','行程','活動','地點名'),
+                loc:  col('地點','位置','區域','地址'),
+                note: col('備註','亮點','特色','說明','交通'),
+              };
+
+              const items = bestRows.filter(r=>{
+                const nameVal = ci.name>=0 ? String(r[ci.name]||'').trim() : '';
+                const dateVal = ci.date>=0 ? String(r[ci.date]||'').trim() : '';
+                return nameVal.length>0 || dateVal.length>0;
+              }).map(r=>({
                 date: ci.date>=0 ? String(r[ci.date]||'').trim() : '',
                 time: ci.time>=0 ? String(r[ci.time]||'').trim() : '',
                 category: ci.cat>=0 ? String(r[ci.cat]||'景點').trim() : '景點',
                 name: ci.name>=0 ? String(r[ci.name]||'').trim() : '',
                 location: ci.loc>=0 ? String(r[ci.loc]||'').trim() : '',
                 note: ci.note>=0 ? String(r[ci.note]||'').trim() : '',
-              }));
-              if(items.length===0){ setUError('Excel 沒有可解析的資料'); setULoading(false); return; }
+              })).filter(it=>it.name);
+
+              if(items.length===0){ setUError('Excel 沒有可解析的資料，請改用「貼上文字」'); setULoading(false); return; }
               setUParsed(items); setUSelected(items.map((_,i)=>i));
               setULoading(false); return;
             }
@@ -1678,7 +1714,7 @@ function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, set
         }
         const bytes=Uint8Array.from(atob(photoData),c=>c.charCodeAt(0));
         const blob=new Blob([bytes],{type:photoMime});
-        const result=await window.Tesseract.recognize(blob,'chi_tra+chi_sim+jpn+eng',{logger:()=>{}});
+        const result=await window.Tesseract.recognize(blob,'chi_tra+chi_sim+jpn+kor+eng',{logger:()=>{}});
         ocrText=result.data.text||'';
       } catch(ocrErr){ console.warn('OCR failed, fallback to AI vision',ocrErr); }
 
@@ -4275,7 +4311,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                   const lng=result.geometry?.location?.lng;
                   // 優先用 place_id 精確跳到那個地點
                   const url = result.place_id
-                    ? `https://www.google.com/maps/place/?q=place_id:${result.place_id}`
+                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}&query_place_id=${result.place_id}`
                     : lat&&lng
                     ? `https://www.google.com/maps/search/${encodeURIComponent(loc)}/@${lat},${lng},17z`
                     : `https://www.google.com/maps/search/${encodeURIComponent(loc+(dest?' '+dest:''))}`;
@@ -4411,7 +4447,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         else if(results.length===1){
                           const r=results[0];
                           const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
-                          const url=r.place_id ? `https://www.google.com/maps/place/?q=place_id:${r.place_id}` : lat&&lng ? `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z` : `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
+                          const url=r.place_id ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name+" "+b.name)}&query_place_id=${r.place_id}`;
                           setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
                           alert('✅ 已找到！地圖連結已填入');
                         } else {
@@ -4422,7 +4458,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           if(idx>=0&&idx<results.length){
                             const r=results[idx];
                             const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
-                            const url=r.place_id ? `https://www.google.com/maps/place/?q=place_id:${r.place_id}` : lat&&lng ? `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z` : `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
+                            const url=r.place_id ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name+" "+b.name)}&query_place_id=${r.place_id}`;
                             setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
                             alert('✅ 地圖連結已填入');
                           }
@@ -5549,7 +5585,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       const r=results[0];
                       const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
                       const url=r.place_id
-                        ?`https://www.google.com/maps/place/?q=place_id:${r.place_id}`
+                        ?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cur.name)}&query_place_id=${r.place_id}`
                         :lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(cur.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(cur.name+' '+dest)}`;
                       set('mapUrl', url);
                       alert('✅ 已找到：'+r.formatted_address+'\n地圖連結已填入！');
