@@ -4246,9 +4246,14 @@ function TripDetailScreen({ user, trip, onBack }) {
                 if(data.error_message){ alert('錯誤：'+data.error_message); btn.textContent='🔍 搜尋'; btn.disabled=false; return; }
                 const result=data.results?.[0];
                 if(result?.place_id){
-                  const url='https://www.google.com/maps/place/?q=place_id:'+result.place_id;
+                  const lat=result.geometry?.location?.lat;
+                  const lng=result.geometry?.location?.lng;
+                  // 用原始地點名稱搜尋，但定位在正確的經緯度
+                  const url = lat&&lng
+                    ? `https://www.google.com/maps/search/${encodeURIComponent(loc)}/@${lat},${lng},17z`
+                    : `https://www.google.com/maps/search/${encodeURIComponent(loc+(dest?' '+dest:''))}`;
                   setModal(p=>({...p,data:{...p.data,mapUrl:url}}));
-                  alert('✅ 已找到：'+result.formatted_address+'\n地圖連結已自動填入！');
+                  alert('✅ 已找到！地圖連結已自動填入');
                 } else { alert('找不到這個地點，請確認名稱後再試'); }
               } catch(err){ alert('搜尋失敗：'+err.message); }
               btn.textContent='🔍 搜尋'; btn.disabled=false;
