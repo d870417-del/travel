@@ -2506,14 +2506,21 @@ function TripDetailScreen({ user, trip, onBack }) {
             ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`
             : `https://www.google.com/maps/search/${encodeURIComponent(places.join(' ')+(dest?' '+dest:''))}`;
           return (
-            <button onClick={()=>window.location.href=url} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer' }}>
-              🗺 在地圖看當天行程（{places.length} 個地點）
-            </button>
+            <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+              <button onClick={()=>window.location.href=url} style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                🗺 當天地圖（{places.length}個）
+              </button>
+              {selectedDate!=='待安排' && (
+                <button onClick={()=>setShowFoodPicker(p=>!p)} style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  🍜 {showFoodPicker ? '收起美食' : '附近美食'}
+                </button>
+              )}
+            </div>
           );
         })()}
-        {selectedDate!=='待安排' && (
-          <button onClick={()=>setShowFoodPicker(p=>!p)} style={{ width:'100%', marginBottom:10, padding:'10px', borderRadius:12, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, fontSize:13, fontWeight:700, cursor:'pointer' }}>
-            🍜 {showFoodPicker ? '收起美食清單' : '從美食清單挑一間排進來'}
+        {selectedDate!=='待安排' && !filteredItinerary.length && (
+          <button onClick={()=>setShowFoodPicker(p=>!p)} style={{ width:'100%', marginBottom:10, padding:'7px 10px', borderRadius:10, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+            🍜 {showFoodPicker ? '收起美食' : '附近美食'}
           </button>
         )}
         {showFoodPicker && selectedDate!=='待安排' && (
