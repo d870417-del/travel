@@ -1234,12 +1234,17 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
               for(const sheetName of wb.SheetNames){
                 const ws = wb.Sheets[sheetName];
                 const allRows = XLSX.utils.sheet_to_json(ws, { header:1 });
-                // 找 header 行（包含「名稱」「景點」「行程」等關鍵字的那行）
+                // 找 header 行：需要同一行有多個欄位關鍵字（避免誤判標題行）
                 let headerIdx = 0;
-                for(let i=0;i<Math.min(allRows.length,10);i++){
-                  const row = (allRows[i]||[]).map(h=>String(h||''));
-                  if(row.some(h=>/名稱|景點|行程|time|date|活動/i.test(h))){
-                    headerIdx=i; break;
+                let bestScore = 0;
+                for(let i=0;i<Math.min(allRows.length,15);i++){
+                  const row = (allRows[i]||[]).map(h=>String(h||'').trim());
+                  const nonEmpty = row.filter(h=>h).length;
+                  const keywords = row.filter(h=>/^(日期|時間|名稱|景點|行程|地點|備註|類別|時間段|說明|活動)/.test(h)).length;
+                  // 需要至少 2 個欄位關鍵字，且非空欄位 >= 3
+                  if(keywords >= 2 && nonEmpty >= 3 && keywords > bestScore){
+                    bestScore = keywords;
+                    headerIdx = i;
                   }
                 }
                 const header=(allRows[headerIdx]||[]).map(h=>String(h||'').trim());
@@ -1264,18 +1269,28 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
                 note: col('備註','亮點','特色','說明','交通'),
               };
 
-              const items = bestRows.filter(r=>{
-                const nameVal = ci.name>=0 ? String(r[ci.name]||'').trim() : '';
-                const dateVal = ci.date>=0 ? String(r[ci.date]||'').trim() : '';
-                return nameVal.length>0 || dateVal.length>0;
-              }).map(r=>({
-                date: ci.date>=0 ? String(r[ci.date]||'').trim() : '',
-                time: ci.time>=0 ? String(r[ci.time]||'').trim() : '',
-                category: ci.cat>=0 ? String(r[ci.cat]||'景點').trim() : '景點',
-                name: ci.name>=0 ? String(r[ci.name]||'').trim() : '',
-                location: ci.loc>=0 ? String(r[ci.loc]||'').trim() : '',
-                note: ci.note>=0 ? String(r[ci.note]||'').trim() : '',
-              })).filter(it=>it.name);
+              const items = (() => {
+                let lastDate = '';
+                return bestRows.filter(r=>{
+                  const nameVal = ci.name>=0 ? String(r[ci.name]||'').trim() : '';
+                  return nameVal.length>0;
+                }).map(r=>{
+                  // 日期：空的就延用上一行的日期（合併儲存格）
+                  let dateVal = ci.date>=0 ? String(r[ci.date]||'').trim() : '';
+                  if(dateVal) lastDate = dateVal;
+                  else dateVal = lastDate;
+                  // 清理日期格式：「10/25 (日)」→「10/25」
+                  dateVal = dateVal.replace(/\s*[\(（][^)）]*[\)）]/g,'').trim();
+                  return {
+                    date: dateVal,
+                    time: ci.time>=0 ? String(r[ci.time]||'').trim().replace(/上午|下午|晚上|早上/,'') : '',
+                    category: ci.cat>=0 ? String(r[ci.cat]||'景點').trim() : '景點',
+                    name: ci.name>=0 ? String(r[ci.name]||'').trim() : '',
+                    location: ci.loc>=0 ? String(r[ci.loc]||'').trim() : '',
+                    note: ci.note>=0 ? String(r[ci.note]||'').trim() : '',
+                  };
+                }).filter(it=>it.name);
+              })();
 
               if(items.length===0){ setUError('Excel 沒有可解析的資料，請改用「貼上文字」'); setULoading(false); return; }
               setUParsed(items); setUSelected(items.map((_,i)=>i));
@@ -1284,20 +1299,7 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
             const systemPrompt = `你是行程解析助手。請分析行程內容並只回傳純 JSON（不要說明、不要 markdown 代碼塊），格式：{"items":[{"date":"YYYY-MM-DD或空字串","name":"地點或活動名稱","category":"景點|美食|購物|交通|住宿|其他","time":"HH:MM或空字串","note":"備註說明"}]}`;
             const _gk = ['AQ.Ab8RN6IJ1W','s-NnDyfYbXwpi','U0_Qa7qZm1lHh','S0BxaYkC3xxsRQ'];
             const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY || _gk.join('');
-            let parts;
-            if(uMode==='text') {
-              parts = [{ text: systemPrompt + '\n\n請解析這個行程表：\n\n' + uText }];
-            } else if(uFileType==='image') {
-              parts = [
-                { inline_data:{ mime_type:uFile.type, data:uFileData } },
-                { text: systemPrompt + '\n\n請解析這張行程表圖片，萃取所有行程項目。' }
-              ];
-            } else {
-              parts = [
-                { inline_data:{ mime_type:'application/pdf', data:uFileData } },
-                { text: systemPrompt + '\n\n請解析這份行程表文件，萃取所有行程項目。' }
-              ];
-            }
+            const parts = [{ text: systemPrompt + '\n\n請解析這個行程表：\n\n' + uText }];
             const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`, {
               method:'POST',
               headers:{
@@ -1368,16 +1370,16 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
                 </div>
                 {uMode==='file' ? (
                   <>
-                    <input type="file" accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={handleFile} style={{ display:'none' }} id="iti-up"/>
+                    <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} style={{ display:'none' }} id="iti-up"/>
                     <label htmlFor="iti-up" style={{ display:'block', border:`2px dashed ${uFile?C.blue:C.border}`, borderRadius:16, padding:'36px 20px', textAlign:'center', cursor:'pointer', backgroundColor:uFile?C.blueSoft:'transparent' }}>
                       {uFile ? (<>
-                        <div style={{ fontSize:36, marginBottom:8 }}>{uFileType==='image'?'🖼️':uFileType==='excel'?'📊':'📄'}</div>
+                        <div style={{ fontSize:36, marginBottom:8 }}>📊</div>
                         <div style={{ fontSize:14, fontWeight:700, color:C.blue }}>{uFile.name}</div>
-                        <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>{uFileType==='excel'?'Excel 行程表，可直接解析':'點擊重新選擇'}</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>Excel 行程表，可直接解析</div>
                       </>) : (<>
-                        <div style={{ fontSize:40, marginBottom:8 }}>📂</div>
-                        <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>點擊上傳檔案</div>
-                        <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>Excel 行程表、截圖、拍照、PDF 都可以</div>
+                        <div style={{ fontSize:40, marginBottom:8 }}>📊</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>點擊上傳 Excel 行程表</div>
+                        <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>.xlsx / .xls / .csv</div>
                       </>)}
                     </label>
                   </>
@@ -1622,377 +1624,6 @@ ${customReq.trim()?`\n⭐ 我的特殊需求（請務必納入考量）：${cust
 }
 
 
-// ─── 收據拍照記帳組件 ───
-function ReceiptModal({ onClose, user, members, tripCurrencies, walletItems, setWalletItems, saveWallet, splitRecords, setSplitRecords, saveSplitRecords, personalWalletItems, setPersonalWalletItems, savePersonalWallet, savePersonalWalletFor }) {
-  const [step, setStep] = React.useState('upload'); // upload | loading | confirm
-  const [photo, setPhoto] = React.useState(null);
-  const [photoData, setPhotoData] = React.useState(null);
-  const [photoMime, setPhotoMime] = React.useState('');
-  const [parsed, setParsed] = React.useState(null); // {store, total, currency, items:[]}
-  const [error, setError] = React.useState('');
-  const [status, setStatus] = React.useState('');
-  const cancelledRef = React.useRef(false);
-  const [payerId, setPayerId] = React.useState(user.uid);
-  const [mode, setMode] = React.useState('split'); // split(整單平分) | pool(記公費) | items(逐項)
-  const [splitMembers, setSplitMembers] = React.useState(members.map(m=>m.uid));
-  const [currency, setCurrency] = React.useState((tripCurrencies||['JPY'])[0]||'JPY');
-
-  const _gk = ['AQ.Ab8RN6IJ1W','s-NnDyfYbXwpi','U0_Qa7qZm1lHh','S0BxaYkC3xxsRQ'];
-  const GEMINI_KEY = (typeof import.meta!=='undefined' && import.meta.env && import.meta.env.VITE_GEMINI_KEY) || _gk.join('');
-  const SYM = { JPY:'¥', KRW:'₩', TWD:'NT$', USD:'$' };
-
-  const handleFile = (e) => {
-    const f = e.target.files[0]; if(!f) return;
-    setPhoto(f); setError(''); setPhotoData(null);
-    setStatus('讀取照片中...');
-    const reader = new FileReader();
-    reader.onerror = () => { setStatus(''); setError('讀取照片失敗，請換一張'); };
-    reader.onload = ev => {
-      setStatus('壓縮圖片中...');
-      const img = new Image();
-      img.onerror = () => { setStatus(''); setError('此照片格式無法處理（可能是 HEIC），請先用截圖功能擷取收據再上傳'); };
-      img.onload = () => {
-        try {
-          const maxW = 900;
-          const scale = Math.min(1, maxW/img.width);
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.round(img.width*scale);
-          canvas.height = Math.round(img.height*scale);
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(0,0,canvas.width,canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.6);
-          const b64 = compressed.split(',')[1];
-          if(!b64 || b64.length<100){ setStatus(''); setError('圖片處理失敗，請換一張'); return; }
-          setPhotoData(b64);
-          setPhotoMime('image/jpeg');
-          setStatus('');
-        } catch(err) {
-          setStatus(''); setError('圖片處理失敗：'+(err.message||'請換一張'));
-        }
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(f);
-  };
-
-  const recognize = async () => {
-    if(!photoData) return;
-    cancelledRef.current = false;
-    setStep('loading'); setError('');
-
-    const _gk = ['AQ.Ab8RN6IJ1W','s-NnDyfYbXwpi','U0_Qa7qZm1lHh','S0BxaYkC3xxsRQ'];
-    const GEMINI_KEY = (typeof import.meta!=='undefined' && import.meta.env && import.meta.env.VITE_GEMINI_KEY) || _gk.join('');
-
-    const parseJSON = (raw) => {
-      let clean = raw.replace(/```json|```/g,'').trim();
-      if(clean && !clean.endsWith('}')){
-        const lb=clean.lastIndexOf('}'); if(lb>0){
-          clean=clean.slice(0,lb+1);
-          const oa=(clean.match(/\[/g)||[]).length,ca=(clean.match(/\]/g)||[]).length;
-          const oo=(clean.match(/\{/g)||[]).length,co=(clean.match(/\}/g)||[]).length;
-          clean+=']'.repeat(Math.max(0,oa-ca))+'}'.repeat(Math.max(0,oo-co));
-        }
-      }
-      return JSON.parse(clean);
-    };
-
-    try {
-      let p = null;
-
-      // 步驟一：用 Tesseract OCR 讀取文字（免費，不耗圖片額度）
-      let ocrText = '';
-      try {
-        if(!window.Tesseract) {
-          await new Promise((res,rej)=>{
-            const s=document.createElement('script');
-            s.src='https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js';
-            s.onload=res; s.onerror=rej;
-            document.head.appendChild(s);
-          });
-        }
-        const bytes=Uint8Array.from(atob(photoData),c=>c.charCodeAt(0));
-        const blob=new Blob([bytes],{type:photoMime});
-        const result=await window.Tesseract.recognize(blob,'chi_tra+chi_sim+jpn+kor+eng',{logger:()=>{}});
-        ocrText=result.data.text||'';
-      } catch(ocrErr){ console.warn('OCR failed, fallback to AI vision',ocrErr); }
-
-      if(ocrText.trim().length > 15) {
-        // 步驟二：OCR 成功 → 用 Gemini 解析文字（文字額度，比圖片便宜很多）
-        const prompt = `這是收據的 OCR 文字，請辨識店名、各品項與金額、總金額、幣別。若品項是外文請翻譯成繁體中文。只回傳純JSON：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額數字,"items":[{"name":"品項中文名","price":金額}]}\n\nOCR文字：\n${ocrText}`;
-        const resp=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_KEY},
-          body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:1024,temperature:0}})
-        });
-        const data=await resp.json();
-        if(data.error) throw new Error(data.error.message);
-        p=parseJSON(data.candidates?.[0]?.content?.parts?.[0]?.text||'');
-      } else {
-        // OCR 失敗 → 退回 AI 直接讀圖
-        const prompt=`這是收據圖片，辨識店名、品項、金額、幣別，品項外文翻中文。只回傳純JSON：{"store":"店名","currency":"TWD|JPY|KRW|USD","total":總額,"items":[{"name":"品項","price":金額}]}`;
-        const resp=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','x-goog-api-key':GEMINI_KEY},
-          body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:photoMime,data:photoData}},{text:prompt}]}],generationConfig:{maxOutputTokens:2048,temperature:0}})
-        });
-        const data=await resp.json();
-        if(data.error) throw new Error(data.error.message);
-        p=parseJSON(data.candidates?.[0]?.content?.parts?.[0]?.text||'');
-      }
-
-      if(cancelledRef.current) return;
-      if(p.store && /^(receipt|收據|store|商店)$/i.test(p.store.trim())) p.store='';
-      setParsed(p);
-      if(p.currency) setCurrency(p.currency);
-      if(p.items) p.items.forEach(it=>{ it.sharedBy = members.map(m=>m.uid); });
-      setStep('confirm');
-    } catch(e) {
-      if(cancelledRef.current) return;
-      const em=e?.message||'';
-      let msg;
-      if(/quota|exceeded|RESOURCE_EXHAUSTED/i.test(em)) msg='AI 次數暫時用完 😅 請等 1-2 分鐘再試';
-      else if(/high demand|overloaded/i.test(em)) msg='Gemini 暫時太忙，請稍等幾秒再試';
-      else msg='辨識失敗：'+em.slice(0,80);
-      setError(msg);
-      setStep('upload');
-    }
-  };
-
-
-
-  const memberName = uid => members.find(m=>m.uid===uid)?.displayName||'?';
-
-  const apply = () => {
-    const total = Number(parsed.total)||parsed.items?.reduce((s,it)=>s+Number(it.price||0),0)||0;
-    const store = (parsed.store||'').trim() || (parsed.items?.[0]?.name) || '消費';
-    const now = Date.now();
-    const today = new Date();
-    const dateStr = `${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
-
-    if(mode==='pool') {
-      // 記到公費
-      const item = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據', editedById:payerId, editedByName:memberName(payerId), contributorIds:members.map(m=>m.uid), forMemberIds:members.map(m=>m.uid) };
-      const n=[...walletItems,item]; setWalletItems(n); saveWallet(n);
-    } else if(mode==='split') {
-      // 整單平分：全額記到付款人的個人帳（支出）
-      const payerEntry = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據代墊', editedById:user.uid, editedByName:memberName(payerId), createdAt:now };
-      if(payerId===user.uid){
-        const np=[...personalWalletItems, payerEntry];
-        setPersonalWalletItems(np); savePersonalWallet(np);
-      } else {
-        // 幫別人記：讀取對方的個人帳再寫入
-        savePersonalWalletFor(payerId, payerEntry);
-      }
-      // 代墊：其他人欠付款人
-      const share = Math.floor(total/splitMembers.length);
-      const newRecords = splitMembers.filter(uid=>uid!==payerId).map((uid,i)=>({
-        id:now+1+i, payerId, receiverId:uid, amount:share, currency, note:store, date:dateStr, settled:false, createdAt:now+1+i
-      }));
-      const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
-    } else {
-      // 逐項分配：全額記到付款人的個人帳（支出）
-      const payerEntry = { id:now, name:store, amount:total, currency, type:'支出', date:dateStr, note:'收據代墊', editedById:user.uid, editedByName:memberName(payerId), createdAt:now };
-      if(payerId===user.uid){
-        const np=[...personalWalletItems, payerEntry];
-        setPersonalWalletItems(np); savePersonalWallet(np);
-      } else {
-        savePersonalWalletFor(payerId, payerEntry);
-      }
-      // 代墊：每個品項由 sharedBy 名單平分，付款人幫其他人代墊
-      const byMember = {}; // receiverId -> {amount, items:[品項名]}
-      parsed.items.forEach(it=>{
-        const price = Number(it.price)||0;
-        const sharers = (it.sharedBy||[]).filter(Boolean);
-        if(sharers.length===0 || price<=0) return;
-        const share = Math.floor(price/sharers.length);
-        sharers.forEach(uid=>{
-          if(uid!==payerId){
-            if(!byMember[uid]) byMember[uid] = { amount:0, items:[] };
-            byMember[uid].amount += share;
-            byMember[uid].items.push(it.name);
-          }
-        });
-      });
-      const newRecords = Object.entries(byMember).filter(([uid,v])=>v.amount>0).map(([uid,v],i)=>({
-        id:now+1+i, payerId, receiverId:uid, amount:v.amount, currency,
-        note:`${store}（${v.items.join('、')}）`, date:dateStr, settled:false, createdAt:now+1+i
-      }));
-      const n=[...splitRecords,...newRecords]; setSplitRecords(n); saveSplitRecords(n);
-    }
-    onClose();
-  };
-
-  return (
-    <div style={{ position:'fixed', inset:0, zIndex:250, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-      <div onClick={onClose} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
-      <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:520, borderRadius:'24px 24px 0 0', maxHeight:'90vh', overflowY:'auto', padding:24, paddingBottom:40 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <div style={{ fontSize:17, fontWeight:800 }}>📷 拍收據記帳</div>
-          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:24, color:C.textMuted, cursor:'pointer' }}>×</button>
-        </div>
-
-        {step==='upload' && (<>
-          <input type="file" accept="image/*" onChange={handleFile} style={{ display:'none' }} id="receipt-up"/>
-          <label htmlFor="receipt-up" style={{ display:'block', border:`2px dashed ${photo?C.blue:C.border}`, borderRadius:16, padding:'40px 20px', textAlign:'center', cursor:'pointer', backgroundColor:photo?C.blueSoft:'transparent' }}>
-            {photo ? (<>
-              <div style={{ fontSize:36, marginBottom:8 }}>🧾</div>
-              <div style={{ fontSize:14, fontWeight:700, color:C.blue }}>{photo.name}</div>
-              <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>點擊重新選擇</div>
-            </>) : (<>
-              <div style={{ fontSize:44, marginBottom:10 }}>📸</div>
-              <div style={{ fontSize:14, fontWeight:700, color:C.textMuted }}>拍照或選擇收據照片</div>
-            </>)}
-          </label>
-          {status && <div style={{ color:C.blue, fontSize:13, marginTop:12, textAlign:'center' }}>{status}</div>}
-          {error && <div style={{ color:C.danger, fontSize:13, marginTop:12, textAlign:'center', lineHeight:1.5 }}>{error}</div>}
-          <button onClick={recognize} disabled={!photoData} style={{ width:'100%', marginTop:16, padding:14, borderRadius:13, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer', opacity:photoData?1:0.5 }}>{photo&&!photoData&&!error ? '圖片處理中...' : '✨ 辨識收據'}</button>
-        </>)}
-
-        {step==='loading' && (
-          <div style={{ textAlign:'center', padding:'50px 20px' }}>
-            <div style={{ fontSize:40, marginBottom:16, display:'inline-block', animation:'spin 1.2s linear infinite' }}>🧾</div>
-            <div style={{ fontSize:15, fontWeight:700 }}>AI 正在辨識收據...</div>
-            <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>可能需要 30-60 秒，請稍候</div>
-            <button onClick={()=>{ cancelledRef.current=true; setStep('upload'); }} style={{ marginTop:20, padding:'8px 20px', borderRadius:10, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>取消</button>
-            <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
-          </div>
-        )}
-
-        {step==='confirm' && parsed && (<>
-          <div style={{ marginBottom:16, padding:'12px 14px', backgroundColor:C.bg, borderRadius:12 }}>
-            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>店名（可修改）</div>
-            <input value={parsed.store||''} onChange={e=>setParsed(p=>({...p,store:e.target.value}))} placeholder="店名" style={{ ...gs.input, fontWeight:800, fontSize:15, marginBottom:8 }}/>
-            <div style={{ fontSize:20, fontWeight:900, color:C.blue }}>{SYM[currency]||''}{(Number(parsed.total)||0).toLocaleString()}</div>
-            {parsed.items && parsed.items.length>0 && (
-              <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}` }}>
-                <div style={{ fontSize:11, color:C.textMuted, marginBottom:6 }}>品項明細</div>
-                {parsed.items.map((it,i)=>(
-                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'2px 0' }}>
-                    <span>{it.name}</span>
-                    <span style={{ color:C.textMuted }}>{SYM[currency]||''}{Number(it.price||0).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 付款人 */}
-          <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>誰付款？</div>
-          <select value={payerId} onChange={e=>setPayerId(e.target.value)} style={{ ...gs.input, marginBottom:16, appearance:'none' }}>
-            {members.map(m=><option key={m.uid} value={m.uid}>{m.displayName}</option>)}
-          </select>
-
-          {/* 模式 */}
-          <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>怎麼分？</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-            {[['split','整單平分','大家均攤這筆'],['pool','記到公費','直接進共同公費'],['items','逐項分配','每個品項分給不同人']].map(([v,t,d])=>(
-              <button key={v} onClick={()=>setMode(v)} style={{ padding:'12px 14px', borderRadius:12, border:`1.5px solid ${mode===v?C.blue:C.border}`, backgroundColor:mode===v?C.blueSoft:C.bg, textAlign:'left', cursor:'pointer' }}>
-                <div style={{ fontSize:14, fontWeight:700, color:mode===v?C.blue:C.text }}>{t}</div>
-                <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>{d}</div>
-              </button>
-            ))}
-          </div>
-
-          {/* 平分對象（整單平分用） */}
-          {mode==='split' && (
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>平分給誰</div>
-              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                {members.map(m=>(
-                  <button key={m.uid} onClick={()=>setSplitMembers(s=>s.includes(m.uid)?s.filter(x=>x!==m.uid):[...s,m.uid])}
-                    style={{ padding:'6px 12px', borderRadius:8, border:`1.5px solid ${splitMembers.includes(m.uid)?C.blue:C.border}`, backgroundColor:splitMembers.includes(m.uid)?C.blueSoft:C.bg, color:splitMembers.includes(m.uid)?C.blue:C.textMuted, fontSize:13, fontWeight:700, cursor:'pointer' }}>{m.displayName}</button>
-                ))}
-              </div>
-              {splitMembers.length>0 && (
-                <div style={{ fontSize:11, color:C.textMuted, marginTop:8 }}>
-                  {splitMembers.length} 人均攤，每人 {SYM[currency]||''}{Math.floor((Number(parsed.total)||0)/splitMembers.length).toLocaleString()}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 逐項分配 */}
-          {mode==='items' && parsed.items && (
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:8 }}>每個品項由誰分攤</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {parsed.items.map((it,i)=>{
-                  const sharers = (it.sharedBy||[]).filter(Boolean);
-                  const perPerson = sharers.length>0 ? Math.floor(Number(it.price||0)/sharers.length) : 0;
-                  return (
-                    <div key={i} style={{ padding:'12px', backgroundColor:C.bg, borderRadius:12 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                        <span style={{ fontSize:14, fontWeight:700 }}>{it.name}</span>
-                        <span style={{ fontSize:14, fontWeight:800 }}>{SYM[currency]||''}{Number(it.price||0).toLocaleString()}</span>
-                      </div>
-                      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:6 }}>
-                        {members.map(m=>{
-                          const on = sharers.includes(m.uid);
-                          return (
-                            <button key={m.uid} onClick={()=>{
-                              setParsed(p=>({...p, items:p.items.map((x,j)=>{
-                                if(j!==i) return x;
-                                const cur = (x.sharedBy||[]).filter(Boolean);
-                                return {...x, sharedBy: on ? cur.filter(u=>u!==m.uid) : [...cur, m.uid]};
-                              })}));
-                            }} style={{ padding:'4px 10px', borderRadius:8, border:`1.5px solid ${on?C.blue:C.border}`, backgroundColor:on?C.blueSoft:C.surface, color:on?C.blue:C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{m.displayName}</button>
-                          );
-                        })}
-                      </div>
-                      {sharers.length>0 && (
-                        <div style={{ fontSize:11, color:C.textMuted }}>
-                          {sharers.length} 人分攤，每人 {SYM[currency]||''}{perPerson.toLocaleString()}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* 我的分攤摘要 */}
-          {(()=>{
-            let myShare = 0, payerLabel = '';
-            const total = Number(parsed.total)||0;
-            if(mode==='split'){
-              if(splitMembers.includes(user.uid)) myShare = Math.floor(total/splitMembers.length);
-            } else if(mode==='items'){
-              parsed.items?.forEach(it=>{
-                const sharers=(it.sharedBy||[]).filter(Boolean);
-                if(sharers.includes(user.uid) && sharers.length>0) myShare += Math.floor(Number(it.price||0)/sharers.length);
-              });
-            }
-            if(mode==='pool') return null;
-            const iPaid = payerId===user.uid;
-            return (
-              <div style={{ marginBottom:16, padding:'12px 14px', backgroundColor:iPaid?C.greenSoft:C.dangerSoft, borderRadius:12 }}>
-                {iPaid ? (
-                  <div style={{ fontSize:13, color:C.text }}>
-                    <span style={{ fontWeight:700 }}>你付了全額 {SYM[currency]||''}{total.toLocaleString()}</span>，
-                    其中你自己分攤 {SYM[currency]||''}{myShare.toLocaleString()}，
-                    其他人需還你 <span style={{ fontWeight:800, color:C.green }}>{SYM[currency]||''}{(total-myShare).toLocaleString()}</span>
-                  </div>
-                ) : (
-                  <div style={{ fontSize:13, color:C.text }}>
-                    由 {memberName(payerId)} 付款，
-                    <span style={{ fontWeight:800, color:C.danger }}>你需要付 {SYM[currency]||''}{myShare.toLocaleString()}</span>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          <div style={{ display:'flex', gap:10 }}>
-            <button onClick={apply} style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer' }}>✓ 建立帳目</button>
-          </div>
-        </>)}
-      </div>
-    </div>
-  );
-}
 
 function TripDetailScreen({ user, trip, onBack }) {
   const color = trip.color || C.blue;
@@ -2035,8 +1666,6 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [splitModal, setSplitModal] = useState({ open:false, data:null });
   const [splitEditTarget, setSplitEditTarget] = useState(null); // 編輯的 group
   const [walletModal, setWalletModal] = useState({ open:false, data:null });
-  const [walletAddChoice, setWalletAddChoice] = useState(false); // 選拍照或手動
-  const [receiptModal, setReceiptModal] = useState({ open:false }); // 收據拍照
   const [walletCalc, setWalletCalc] = useState(false);
   const [transferStates, setTransferStates] = useState({});
   const [sharedTodos, setSharedTodos] = useState([]);
@@ -2561,7 +2190,6 @@ function TripDetailScreen({ user, trip, onBack }) {
     const uid = targetUid || user.uid;
     await setDoc(doc(db,"tripData",`${trip.id}_personalWallet_${uid}`), { items:JSON.parse(JSON.stringify(items)), updatedAt:serverTimestamp() });
   }
-  // 幫別人的個人帳新增一筆（讀取對方現有帳目→加入→寫回）
   async function savePersonalWalletFor(targetUid, entry) {
     const ref = doc(db,"tripData",`${trip.id}_personalWallet_${targetUid}`);
     const snap = await getDoc(ref);
@@ -3234,17 +2862,6 @@ function TripDetailScreen({ user, trip, onBack }) {
           <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
         </button>
 
-        {/* 📷 拍收據記帳 */}
-        <button onClick={()=>setReceiptModal({open:true})}
-          style={{ ...gs.card, cursor:'pointer', padding:'16px 18px', border:`1.5px solid ${C.blue}22`, background:C.surface, textAlign:'left', display:'flex', alignItems:'center', gap:16, marginTop:4 }}>
-          <div style={{ fontSize:30 }}>📷</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.blue }}>拍收據記帳</div>
-            <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>AI 辨識，可記到公費或代墊</div>
-          </div>
-          <div style={{ color:C.blue, fontSize:18, fontWeight:700 }}>›</div>
-        </button>
-
         {/* 匯率設定 */}
         <button onClick={() => setShowCurrencySettings(true)}
           style={{ width:'100%', padding:'10px 14px', borderRadius:12, backgroundColor:C.bg, border:`1px solid ${C.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer', textAlign:'left' }}>
@@ -3254,13 +2871,6 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
           <div style={{ fontSize:11, color:C.purple, fontWeight:700 }}>設定 ›</div>
         </button>
-        {receiptModal.open && <ReceiptModal
-          onClose={()=>setReceiptModal({open:false})}
-          user={user} members={members} tripCurrencies={tripCurrencies}
-          walletItems={walletItems} setWalletItems={setWalletItems} saveWallet={saveWallet}
-          splitRecords={splitRecords} setSplitRecords={setSplitRecords} saveSplitRecords={saveSplitRecords}
-          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet} savePersonalWalletFor={savePersonalWalletFor}
-        />}
       </div>
     );
 
@@ -3270,7 +2880,6 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:30 }}>
           <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
           <div style={{ fontSize:15, fontWeight:800, flex:1 }}>代墊結算</div>
-          <button onClick={()=>setReceiptModal({open:true})} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📷 拍收據</button>
         </div>
 
         <div style={{ padding:16, flex:1 }}>
@@ -3662,13 +3271,6 @@ function TripDetailScreen({ user, trip, onBack }) {
         {/* 新增代墊按鈕 */}
         <button onClick={() => setSplitModal({open:true, data:{payerId:user.uid, receiverIds:[], amount:'', currency:(tripCurrencies||['JPY'])[0]||'JPY', note:''}})}
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${C.warm},${C.text})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${C.warm}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
-        {receiptModal.open && <ReceiptModal
-          onClose={()=>setReceiptModal({open:false})}
-          user={user} members={members} tripCurrencies={tripCurrencies}
-          walletItems={walletItems} setWalletItems={setWalletItems} saveWallet={saveWallet}
-          splitRecords={splitRecords} setSplitRecords={setSplitRecords} saveSplitRecords={saveSplitRecords}
-          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet} savePersonalWalletFor={savePersonalWalletFor}
-        />}
       </div>
     );
 
@@ -3683,7 +3285,6 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ padding:'12px 16px', backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:30 }}>
           <button onClick={()=>setWalletSubTab('overview')} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:C.textMuted, padding:'0 4px' }}>←</button>
           <div style={{ fontSize:15, fontWeight:800, flex:1 }}>{pageTitle}</div>
-          <button onClick={()=>setReceiptModal({open:true})} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>📷 拍收據</button>
         </div>
 
         {/* 餘額 + 結算按鈕 */}
@@ -3834,13 +3435,6 @@ function TripDetailScreen({ user, trip, onBack }) {
           style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${pageColor},${C.blue})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${pageColor}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
 
         {/* 收據拍照 */}
-        {receiptModal.open && <ReceiptModal
-          onClose={()=>setReceiptModal({open:false})}
-          user={user} members={members} tripCurrencies={tripCurrencies}
-          walletItems={walletItems} setWalletItems={setWalletItems} saveWallet={saveWallet}
-          splitRecords={splitRecords} setSplitRecords={setSplitRecords} saveSplitRecords={saveSplitRecords}
-          personalWalletItems={personalWalletItems} setPersonalWalletItems={setPersonalWalletItems} savePersonalWallet={savePersonalWallet} savePersonalWalletFor={savePersonalWalletFor}
-        />}
 
         {/* ── 公費結算 Modal ── */}
         {showPoolSettlement&&(
