@@ -2409,7 +2409,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:2 }}>
           {['待安排',...tripDates.filter(d=>d!=='待安排')].filter(d=>tripDates.includes(d)).map(d => (
             <div key={d} style={{ display:'flex', alignItems:'center', gap:3, flexShrink:0 }}>
-              <button onClick={() => setSelectedDate(d)} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
+              <button onClick={() => { setSelectedDate(d); setShowFoodPicker(false); }} style={{ padding:'6px 12px', borderRadius:10, border:`1.5px solid ${selectedDate===d?color:C.border}`, backgroundColor:selectedDate===d?color:C.surface, color:selectedDate===d?'#fff':C.textMuted, fontSize:12, fontWeight:700, cursor:'pointer' }}>{d}</button>
               {d!=='待安排' && <button onClick={() => setConfirmDel({title:'刪除日期',message:`確定刪除 ${d} 的日期？日期內的行程不會被刪除。`,fn:()=>handleDeleteDate(d)})} style={{ background:'none', border:'none', color:C.textMuted, fontSize:13, cursor:'pointer', opacity:0.5, padding:'0 2px' }}>×</button>}
             </div>
           ))}
@@ -2499,27 +2499,45 @@ function TripDetailScreen({ user, trip, onBack }) {
           const dest = (Array.isArray(destArr) ? destArr[0] : destArr || '').trim();
           const clean = s => (s||'').trim().replace(/(最後|順便|記得|要去|去|逛|吃|玩|看|買)?(補貨|採買|晚餐|午餐|早餐|集合|出發|退房|入住|休息)$/,'').trim();
           const items = filteredItinerary.filter(it => it.category!=='交通' && it.category!=='住宿');
-          // 有精確 mapUrl 的優先用 place_id 串路線
-          const withUrl = items.filter(it=>it.mapUrl);
-          const withoutUrl = items.filter(it=>!it.mapUrl);
           const places = items.map(it => clean(it.location||it.name||'')).filter(Boolean).slice(0,10);
           if(places.length===0) return null;
-          let url;
-          if(withUrl.length>0 && withUrl.length===items.length){
-            // 全部都有精確連結 → 用第一個，其他自己查
-            url = withUrl.length===1 ? withUrl[0].mapUrl :
-              `https://www.google.com/maps/dir/${withUrl.map(it=>encodeURIComponent(it.location||it.name||'')).join('/')}`;
-          } else {
-            url = places.length===1
-              ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`
-              : `https://www.google.com/maps/dir/${places.map(p=>encodeURIComponent(p+(dest?' '+dest:''))).join('/')}`;
-          }
+          // 標記模式：用搜尋取代路線，只顯示 pins 不顯示路線
+          const url = places.length===1
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`
+            : `https://www.google.com/maps/search/${encodeURIComponent(places.join(' ')+(dest?' '+dest:''))}`;
           return (
-            <button onClick={()=>window.open(url,'_blank')} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer' }}>
+            <button onClick={()=>window.location.href=url} style={{ width:'100%', marginBottom:14, padding:'12px', borderRadius:12, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:14, fontWeight:800, cursor:'pointer' }}>
               🗺 在地圖看當天行程（{places.length} 個地點）
             </button>
           );
         })()}
+        {selectedDate!=='待安排' && (
+          <button onClick={()=>setShowFoodPicker(p=>!p)} style={{ width:'100%', marginBottom:10, padding:'10px', borderRadius:12, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+            🍜 {showFoodPicker ? '收起美食清單' : '從美食清單挑一間排進來'}
+          </button>
+        )}
+        {showFoodPicker && selectedDate!=='待安排' && (
+          <div style={{ ...gs.card, marginBottom:12, padding:14, border:`1.5px solid ${C.warm}33` }}>
+            <div style={{ fontSize:12, color:C.textMuted, marginBottom:10 }}>點「＋」加入 {selectedDate} 的行程</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:260, overflowY:'auto' }}>
+              {foodItems.length===0 && <div style={{ color:C.textMuted, fontSize:13, textAlign:'center', padding:16 }}>美食清單是空的，先到美食頁新增</div>}
+              {foodItems.map(f=>(
+                <div key={f.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'8px 10px', borderRadius:10, backgroundColor:C.bg }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:700 }}>{f.name}</div>
+                    {f.districts?.length>0 && <div style={{ fontSize:11, color:C.textMuted }}>{f.districts.join('・')}</div>}
+                  </div>
+                  <button onClick={()=>{
+                    const newItem={ id:Date.now(), name:f.name, category:'美食', date:selectedDate, time:'', location:'', note:'', mapUrl:'', createdAt:Date.now(), editedById:user.uid, editedByName:user.displayName||'我' };
+                    const n=[...itinerary, newItem]; setItinerary(n); saveItinerary(n, tripDates);
+                    setShowFoodPicker(false);
+                    alert(`✅ 已加入 ${selectedDate}：${f.name}`);
+                  }} style={{ padding:'5px 12px', borderRadius:8, border:'none', backgroundColor:C.warm, color:'#fff', fontSize:12, fontWeight:800, cursor:'pointer', flexShrink:0 }}>＋</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {filteredItinerary.length===0 ? (
           <div style={{ textAlign:'center', padding:'60px 20px', color:C.textMuted, fontSize:13 }}>
             {selectedDate==='待安排' ? '把想去的地方加到待安排，再用 AI 一鍵排行程' : '尚無行程，點右下角 ＋ 新增'}
@@ -2558,7 +2576,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                       </div>
                     )}
                     <div style={{ fontSize:10, color:C.textMuted }}>{item.editedByName||'成員'} 編輯</div>
-                    {item.mapUrl && <button onClick={() => window.open(item.mapUrl,'_blank')} style={{ marginTop:8, padding:'6px 12px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>🗺 開啟地圖</button>}
+                    {item.mapUrl && <button onClick={() => window.location.href=item.mapUrl} style={{ marginTop:8, padding:'6px 12px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer' }}>🗺 開啟地圖</button>}
                   </div>
                 </div>
               );
@@ -2576,6 +2594,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   // 美食 Tab
   // ════════════════════════════════════════
   const [placeSearchModal, setPlaceSearchModal] = useState(false);
+  const [showFoodPicker, setShowFoodPicker] = useState(false);
   const [placeSearchQuery, setPlaceSearchQuery] = useState('');
   const [placeSearchResults, setPlaceSearchResults] = useState([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
@@ -2692,10 +2711,13 @@ function TripDetailScreen({ user, trip, onBack }) {
                           style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${item.visited?C.warm:C.border}`, backgroundColor:item.visited?C.warmSoft:C.bg, color:item.visited?C.warm:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer' }}>
                           {item.visited?'✓ 已去':'標記已去'}
                         </button>
-                        {(item.branches||[]).filter(b=>b.mapUrl).map((b,bi)=>(
-                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name||'地圖'}</button>
-                      ))}
-                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 地圖</button>}
+                        {/* 地圖：一個按鈕看附近所有分店 */}
+                      {(() => {
+                        const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
+                        const dest = Array.isArray(destArr)?destArr[0]:destArr||'';
+                        const url = `https://www.google.com/maps/search/${encodeURIComponent(item.name+(dest?' '+dest:''))}`;
+                        return <button onClick={()=>window.location.href=url} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>;
+                      })()}
                       </div>
                     </div>
                   </div>
@@ -3618,10 +3640,12 @@ function TripDetailScreen({ user, trip, onBack }) {
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
                     <div style={{ fontSize:10, color:C.textMuted }}>{item.addedByName||'成員'} 許願</div>
                     <div style={{ display:'flex', gap:6 }}>
-                      {(item.branches||[]).filter(b=>b.mapUrl).map((b,bi)=>(
-                        <button key={bi} onClick={()=>window.open(b.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 {b.name}</button>
-                      ))}
-                      {!(item.branches||[]).length && item.mapUrl && <button onClick={()=>window.open(item.mapUrl,'_blank')} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺</button>}
+                      {(() => {
+                        const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
+                        const dest = Array.isArray(destArr)?destArr[0]:destArr||'';
+                        const url = `https://www.google.com/maps/search/${encodeURIComponent(item.name+(dest?' '+dest:''))}`;
+                        return <button onClick={()=>window.location.href=url} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>;
+                      })()}
                     </div>
                   </div>
                 </div>
