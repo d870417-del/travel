@@ -4363,10 +4363,47 @@ function TripDetailScreen({ user, trip, onBack }) {
             <div style={{ marginBottom:14 }}>
               <label style={gs.label}>🗺 各地區地圖連結</label>
               {branches.map((b, bi) => (
-                <div key={bi} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
-                  <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:C.warmSoft, color:C.warm, fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
-                  <input style={{ ...gs.input, flex:1, padding:'10px 12px', fontSize:14 }} placeholder="貼上 Google Maps 連結" value={b.mapUrl||''}
-                    onChange={e => setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:e.target.value}:x)}}))} />
+                <div key={bi} style={{ marginBottom:10 }}>
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <div style={{ padding:'8px 12px', borderRadius:10, backgroundColor:C.warmSoft, color:C.warm, fontSize:13, fontWeight:700, flexShrink:0, minWidth:60, textAlign:'center' }}>{b.name}</div>
+                    <input style={{ ...gs.input, flex:1, padding:'10px 12px', fontSize:14 }} placeholder="貼上 Google Maps 連結" value={b.mapUrl||''}
+                      onChange={e => setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:e.target.value}:x)}}))} />
+                    <button onClick={async(e)=>{
+                      if(!d.name) return;
+                      const btn=e.currentTarget; btn.textContent='搜尋中...'; btn.disabled=true;
+                      const _mk=['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+                      const MAPS_KEY=_mk.join('');
+                      const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
+                      const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
+                      const query=encodeURIComponent(`${d.name} ${b.name} ${dest}`);
+                      try {
+                        const resp=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${query}&language=zh-TW&key=${MAPS_KEY}`);
+                        const data=await resp.json();
+                        const results=data.results||[];
+                        if(results.length===0){ alert('找不到這個地點，請手動貼連結'); }
+                        else if(results.length===1){
+                          const r=results[0];
+                          const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
+                          const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
+                          setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
+                          alert('✅ 已找到！地圖連結已填入');
+                        } else {
+                          // 多個結果讓使用者選
+                          const choices=results.slice(0,5).map((r,i)=>`${i+1}. ${r.formatted_address}`).join('\n');
+                          const pick=prompt(`找到 ${results.length} 個結果，請輸入號碼選擇：\n\n${choices}`);
+                          const idx=parseInt(pick)-1;
+                          if(idx>=0&&idx<results.length){
+                            const r=results[idx];
+                            const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
+                            const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
+                            setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
+                            alert('✅ 地圖連結已填入');
+                          }
+                        }
+                      } catch(err){ alert('搜尋失敗：'+err.message); }
+                      btn.textContent='🔍'; btn.disabled=false;
+                    }} style={{ padding:'8px 10px', borderRadius:10, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>🔍</button>
+                  </div>
                 </div>
               ))}
               <button type="button" onClick={() => setFoodModal(p=>({...p,data:{...p.data,branches:[...(p.data.branches||[]),{name:'',mapUrl:''}]}}))}
@@ -4375,7 +4412,43 @@ function TripDetailScreen({ user, trip, onBack }) {
           ) : (
             <div style={{ marginBottom:14 }}>
               <label style={gs.label}>🗺 地圖連結（選填）</label>
-              <input style={gs.input} autoComplete="off" placeholder="貼上 Google Maps 連結" value={d.mapUrl||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} />
+              <div style={{ display:'flex', gap:8 }}>
+                <input style={{ ...gs.input, flex:1 }} autoComplete="off" placeholder="貼上連結，或點搜尋自動填入" value={d.mapUrl||''} onChange={e=>setFoodModal(p=>({...p,data:{...p.data,mapUrl:e.target.value}}))} />
+                <button onClick={async(e)=>{
+                  if(!d.name){ alert('請先填店家名稱'); return; }
+                  const btn=e.currentTarget; btn.textContent='搜尋中...'; btn.disabled=true;
+                  const _mk=['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+                  const MAPS_KEY=_mk.join('');
+                  const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
+                  const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
+                  const query=encodeURIComponent(`${d.name} ${dest}`);
+                  try {
+                    const resp=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${query}&language=zh-TW&key=${MAPS_KEY}`);
+                    const data=await resp.json();
+                    const results=data.results||[];
+                    if(results.length===0){ alert('找不到這個地點，請手動貼連結'); }
+                    else if(results.length===1){
+                      const r=results[0];
+                      const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
+                      const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(d.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+dest)}`;
+                      setFoodModal(p=>({...p,data:{...p.data,mapUrl:url}}));
+                      alert('✅ 已找到！地圖連結已填入');
+                    } else {
+                      const choices=results.slice(0,5).map((r,i)=>`${i+1}. ${r.formatted_address}`).join('\n');
+                      const pick=prompt(`找到 ${results.length} 個結果，請輸入號碼選擇：\n\n${choices}`);
+                      const idx=parseInt(pick)-1;
+                      if(idx>=0&&idx<results.length){
+                        const r=results[idx];
+                        const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
+                        const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(d.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+dest)}`;
+                        setFoodModal(p=>({...p,data:{...p.data,mapUrl:url}}));
+                        alert('✅ 地圖連結已填入');
+                      }
+                    }
+                  } catch(err){ alert('搜尋失敗：'+err.message); }
+                  btn.textContent='🔍'; btn.disabled=false;
+                }} style={{ padding:'8px 10px', borderRadius:10, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>🔍</button>
+              </div>
             </div>
           )}
 
@@ -5429,7 +5502,32 @@ function TripDetailScreen({ user, trip, onBack }) {
                 </div>
               </div>
               <input placeholder="訂房編號（選填）" value={cur.code||''} onChange={e=>set('code',e.target.value)} style={{ ...gs.input, marginBottom:10 }}/>
-              <input placeholder="Google Maps 連結（選填）" value={cur.mapUrl||''} onChange={e=>set('mapUrl',e.target.value)} style={{ ...gs.input, marginBottom:18 }}/>
+              <div style={{ display:'flex', gap:8, marginBottom:18 }}>
+                <input placeholder="Google Maps 連結（選填）" value={cur.mapUrl||''} onChange={e=>set('mapUrl',e.target.value)} style={{ ...gs.input, flex:1 }}/>
+                <button onClick={async(e)=>{
+                  if(!cur.name){ alert('請先填飯店名稱'); return; }
+                  const btn=e.currentTarget; btn.textContent='搜尋中...'; btn.disabled=true;
+                  const _mk=['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+                  const MAPS_KEY=_mk.join('');
+                  const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);
+                  const dest=Array.isArray(destArr)?destArr[0]:destArr||'';
+                  const query=encodeURIComponent(`${cur.name} ${dest}`);
+                  try {
+                    const resp=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${query}&language=zh-TW&key=${MAPS_KEY}`);
+                    const data=await resp.json();
+                    const results=data.results||[];
+                    if(results.length===0){ alert('找不到這間飯店，請手動貼連結'); }
+                    else {
+                      const r=results[0];
+                      const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
+                      const url=lat&&lng?`https://www.google.com/maps/search/${encodeURIComponent(cur.name)}/@${lat},${lng},17z`:`https://www.google.com/maps/search/${encodeURIComponent(cur.name+' '+dest)}`;
+                      set('mapUrl', url);
+                      alert('✅ 已找到：'+r.formatted_address+'\n地圖連結已填入！');
+                    }
+                  } catch(err){ alert('搜尋失敗：'+err.message); }
+                  btn.textContent='🔍'; btn.disabled=false;
+                }} style={{ padding:'8px 12px', borderRadius:10, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>🔍</button>
+              </div>
               <div style={{ display:'flex', gap:10 }}>
                 <button onClick={()=>setLodgingModal({open:false,data:null})} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontWeight:700, fontSize:14, cursor:'pointer' }}>取消</button>
                 <button onClick={()=>{
