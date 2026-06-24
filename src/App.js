@@ -4447,7 +4447,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         else if(results.length===1){
                           const r=results[0];
                           const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
-                          const url=r.place_id ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name+" "+b.name)}&query_place_id=${r.place_id}`;
+                          const url=r.place_id ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name+" "+b.name)}&query_place_id=${r.place_id}` : `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
                           setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
                           alert('✅ 已找到！地圖連結已填入');
                         } else {
@@ -4458,7 +4458,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                           if(idx>=0&&idx<results.length){
                             const r=results[idx];
                             const lat=r.geometry?.location?.lat, lng=r.geometry?.location?.lng;
-                            const url=r.place_id ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name+" "+b.name)}&query_place_id=${r.place_id}`;
+                            const url=r.place_id ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name+" "+b.name)}&query_place_id=${r.place_id}` : `https://www.google.com/maps/search/${encodeURIComponent(d.name+' '+b.name)}`;
                             setFoodModal(p=>({...p,data:{...p.data,branches:p.data.branches.map((x,i)=>i===bi?{...x,mapUrl:url}:x)}}));
                             alert('✅ 地圖連結已填入');
                           }
