@@ -1229,30 +1229,33 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
               const XLSX = await loadXLSXlib();
               const wb = XLSX.read(uFileData, { type:'array' });
 
-              // 掃所有工作表，找最多有效資料的那張
-              let bestRows = [], bestHeader = [];
+              // 掃所有工作表，找 header 分數最高的那張
+              let bestRows = [], bestHeader = [], bestScore = 0;
               for(const sheetName of wb.SheetNames){
                 const ws = wb.Sheets[sheetName];
                 const allRows = XLSX.utils.sheet_to_json(ws, { header:1 });
-                // 找 header 行：需要同一行有多個欄位關鍵字（避免誤判標題行）
-                let headerIdx = 0;
-                let bestScore = 0;
+                // 找 header 行
+                let headerIdx = 0, sheetBestScore = 0;
                 for(let i=0;i<Math.min(allRows.length,15);i++){
                   const row = (allRows[i]||[]).map(h=>String(h||'').trim());
                   const nonEmpty = row.filter(h=>h).length;
                   const keywords = row.filter(h=>/^(日期|時間|名稱|景點|行程|地點|備註|類別|時間段|說明|活動)/.test(h)).length;
-                  // 需要至少 2 個欄位關鍵字，且非空欄位 >= 3
-                  if(keywords >= 2 && nonEmpty >= 3 && keywords > bestScore){
-                    bestScore = keywords;
+                  if(keywords >= 2 && nonEmpty >= 3 && keywords > sheetBestScore){
+                    sheetBestScore = keywords;
                     headerIdx = i;
                   }
                 }
-                const header=(allRows[headerIdx]||[]).map(h=>String(h||'').trim());
-                const rows=allRows.slice(headerIdx+1).filter(r=>r&&r.some(c=>c));
-                if(rows.length > bestRows.length){ bestRows=rows; bestHeader=header; }
+                // 只有找到 header 才考慮這張工作表
+                if(sheetBestScore > 0 && sheetBestScore > bestScore){
+                  const header=(allRows[headerIdx]||[]).map(h=>String(h||'').trim());
+                  const rows=allRows.slice(headerIdx+1).filter(r=>r&&r.some(c=>c));
+                  bestRows=rows; bestHeader=header; bestScore=sheetBestScore;
+                }
               }
 
-              // 彈性欄位匹配：支援各種欄位名稱
+              if(bestRows.length===0){ setUError('Excel 沒有可解析的資料，請改用「貼上文字」'); setULoading(false); return; }
+
+              // 彈性欄位匹配
               const col = (...names) => {
                 for(const name of names){
                   const idx = bestHeader.findIndex(h=>h.includes(name));
@@ -1275,11 +1278,9 @@ function UploadItineraryModal({ onClose, user, trip, members, itinerary, tripDat
                   const nameVal = ci.name>=0 ? String(r[ci.name]||'').trim() : '';
                   return nameVal.length>0;
                 }).map(r=>{
-                  // 日期：空的就延用上一行的日期（合併儲存格）
                   let dateVal = ci.date>=0 ? String(r[ci.date]||'').trim() : '';
                   if(dateVal) lastDate = dateVal;
                   else dateVal = lastDate;
-                  // 清理日期格式：「10/25 (日)」→「10/25」
                   dateVal = dateVal.replace(/\s*[\(（][^)）]*[\)）]/g,'').trim();
                   return {
                     date: dateVal,
