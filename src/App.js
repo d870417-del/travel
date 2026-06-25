@@ -1626,6 +1626,144 @@ ${customReq.trim()?`\n⭐ 我的特殊需求（請務必納入考量）：${cust
 
 
 
+// ─── 當天地圖（Leaflet 內嵌）───
+function DayMapModal({ date, itinerary, foodItems, trip, onClose }) {
+  const containerRef = React.useRef(null);
+  const mapRef = React.useRef(null);
+  const [status, setStatus] = React.useState('載入地圖中...');
+  const [searchQ, setSearchQ] = React.useState('');
+  const [searching, setSearching] = React.useState(false);
+  const _mk = ['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+  const MAPS_KEY = _mk.join('');
+  const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
+  const dest = (Array.isArray(destArr)?destArr[0]:destArr)||'';
+
+  const geocode = async (name) => {
+    try {
+      const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(name+' '+dest)}&language=zh-TW&key=${MAPS_KEY}`);
+      const d = await r.json();
+      const loc = d.results?.[0]?.geometry?.location;
+      return loc ? [loc.lat, loc.lng] : null;
+    } catch(e){ return null; }
+  };
+
+  const makeIcon = (L, color, emoji) => L.divIcon({
+    html: `<div style="background:${color};width:34px;height:34px;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.35)">${emoji}</div>`,
+    iconSize:[34,34], iconAnchor:[17,17], popupAnchor:[0,-20], className:''
+  });
+
+  const addMarkers = async (L, map, items, color, emoji, labelFn, navFn) => {
+    const results = await Promise.all(items.map(async it => {
+      const name = it._geoName || it.location || it.name || '';
+      if(!name) return null;
+      const coords = await geocode(name);
+      return coords ? { it, coords } : null;
+    }));
+    results.filter(Boolean).forEach(({ it, coords }) => {
+      const marker = L.marker(coords, { icon: makeIcon(L, color, emoji) }).addTo(map);
+      const nav = navFn(it);
+      marker.bindPopup(`<div style="min-width:150px;font-family:sans-serif;padding:4px">
+        <div style="font-weight:800;font-size:14px;margin-bottom:6px">${labelFn(it)}</div>
+        <button onclick="window.location.href='${nav}'" style="width:100%;background:${color};color:white;border:none;padding:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🧭 導航</button>
+      </div>`);
+    });
+  };
+
+  const searchNearby = async (L, map, q) => {
+    if(!q.trim()||!map) return;
+    setSearching(true);
+    try {
+      const r = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q+' '+dest)}&language=zh-TW&key=${MAPS_KEY}`);
+      const d = await r.json();
+      (d.results||[]).slice(0,8).forEach(place => {
+        const loc = place.geometry?.location;
+        if(!loc) return;
+        const marker = L.marker([loc.lat,loc.lng], { icon: makeIcon(L,'#3DAD8A','🔍') }).addTo(map);
+        const nav = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name+' '+dest)}`;
+        marker.bindPopup(`<div style="min-width:150px;font-family:sans-serif;padding:4px">
+          <div style="font-weight:800;font-size:14px;margin-bottom:2px">${place.name}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:6px">⭐ ${place.rating||'-'} · ${place.vicinity||''}</div>
+          <button onclick="window.location.href='${nav}'" style="width:100%;background:#3DAD8A;color:white;border:none;padding:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🧭 導航</button>
+        </div>`);
+      });
+      map.setZoom(14);
+    } catch(e){}
+    setSearching(false);
+  };
+
+  React.useEffect(() => {
+    if(!containerRef.current) return;
+    let cancelled = false;
+    const init = async () => {
+      // Load Leaflet
+      if(!window.L) {
+        const lnk = document.createElement('link');
+        lnk.rel='stylesheet'; lnk.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(lnk);
+        await new Promise((res,rej) => {
+          const s = document.createElement('script');
+          s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          s.onload=res; s.onerror=rej; document.head.appendChild(s);
+        });
+      }
+      if(cancelled) return;
+      const L = window.L;
+      // Center on destination
+      const center = await geocode(dest) || [33.5903,130.4017];
+      if(cancelled) return;
+      const map = L.map(containerRef.current).setView(center, 14);
+      mapRef.current = map;
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'© OpenStreetMap', maxZoom:19 }).addTo(map);
+      setStatus('標記地點中...');
+      // 行程 pins（藍）
+      const dayItems = date==='待安排' ? [] : itinerary.filter(it=>it.date===date && it.category!=='交通' && it.category!=='住宿');
+      await addMarkers(L, map, dayItems, '#2A8FA5', '📍', it=>it.name, it=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((it.location||it.name)+' '+dest)}`);
+      // 美食 pins（橘）
+      const foodFlat = [];
+      foodItems.forEach(f => {
+        const branches = (f.branches||[]).filter(b=>b.name);
+        if(branches.length>0) branches.forEach(b=>foodFlat.push({...f, _geoName:`${f.name} ${b.name}`, _label:`${f.name} ${b.name}`}));
+        else foodFlat.push({...f, _geoName:f.name, _label:f.name});
+      });
+      await addMarkers(L, map, foodFlat, '#C07850', '🍜', it=>it._label, it=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it._geoName+' '+dest)}`);
+      if(!cancelled) setStatus('');
+    };
+    init().catch(()=>setStatus('地圖載入失敗，請確認網路'));
+    return () => { cancelled=true; if(mapRef.current){ mapRef.current.remove(); mapRef.current=null; } };
+  }, []);
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', backgroundColor:'#1a1a2e' }}>
+      {/* Header */}
+      <div style={{ padding:'52px 16px 10px', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+        <button onClick={onClose} style={{ background:'none', border:'none', color:'white', fontSize:22, cursor:'pointer', padding:4 }}>←</button>
+        <div style={{ color:'white', fontWeight:800, fontSize:15, flex:1 }}>{date==='待安排'?'全部美食地圖':date+' 地圖'}</div>
+        <div style={{ display:'flex', gap:8 }}>
+          <span style={{ color:'#2A8FA5', fontSize:11, fontWeight:700 }}>📍景點</span>
+          <span style={{ color:'#C07850', fontSize:11, fontWeight:700 }}>🍜美食</span>
+          <span style={{ color:'#3DAD8A', fontSize:11, fontWeight:700 }}>🔍搜尋</span>
+        </div>
+      </div>
+      {/* Search */}
+      <div style={{ padding:'0 12px 10px', display:'flex', gap:8, flexShrink:0 }}>
+        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter') searchNearby(window.L, mapRef.current, searchQ); }}
+          placeholder="搜尋附近美食或景點..."
+          style={{ flex:1, padding:'9px 14px', borderRadius:20, border:'none', fontSize:13, outline:'none' }}/>
+        <button onClick={()=>searchNearby(window.L, mapRef.current, searchQ)} disabled={searching}
+          style={{ padding:'9px 18px', borderRadius:20, border:'none', backgroundColor:'#2A8FA5', color:'white', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0 }}>
+          {searching?'⏳':'搜尋'}
+        </button>
+      </div>
+      {/* Map */}
+      <div style={{ flex:1, position:'relative' }}>
+        {status && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', backgroundColor:'rgba(0,0,0,0.6)', color:'white', zIndex:10, fontSize:14, flexDirection:'column', gap:8 }}><div>⏳</div><div>{status}</div></div>}
+        <div ref={containerRef} style={{ width:'100%', height:'100%' }}/>
+      </div>
+    </div>
+  );
+}
+
 function TripDetailScreen({ user, trip, onBack }) {
   const color = trip.color || C.blue;
   const [tab, setTab] = useState('itinerary');
@@ -2507,7 +2645,7 @@ function TripDetailScreen({ user, trip, onBack }) {
             : `https://www.google.com/maps/search/${encodeURIComponent(places.join(' ')+(dest?' '+dest:''))}`;
           return (
             <div style={{ display:'flex', gap:8, marginBottom:10 }}>
-              <button onClick={()=>window.location.href=url} style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+              <button onClick={()=>setDayMapOpen(true)} style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>
                 🗺 當天地圖（{places.length}個）
               </button>
               {selectedDate!=='待安排' && (
@@ -2602,6 +2740,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   // ════════════════════════════════════════
   const [placeSearchModal, setPlaceSearchModal] = useState(false);
   const [showFoodPicker, setShowFoodPicker] = useState(false);
+  const [dayMapOpen, setDayMapOpen] = useState(false);
   const [placeSearchQuery, setPlaceSearchQuery] = useState('');
   const [placeSearchResults, setPlaceSearchResults] = useState([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
@@ -2718,12 +2857,17 @@ function TripDetailScreen({ user, trip, onBack }) {
                           style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${item.visited?C.warm:C.border}`, backgroundColor:item.visited?C.warmSoft:C.bg, color:item.visited?C.warm:C.textMuted, fontSize:11, fontWeight:700, cursor:'pointer' }}>
                           {item.visited?'✓ 已去':'標記已去'}
                         </button>
-                        {/* 地圖：一個按鈕看附近所有分店 */}
+                        {/* 地圖按鈕：附近分店 + 各分店 */}
                       {(() => {
                         const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
                         const dest = Array.isArray(destArr)?destArr[0]:destArr||'';
-                        const url = `https://www.google.com/maps/search/${encodeURIComponent(item.name+(dest?' '+dest:''))}`;
-                        return <button onClick={()=>window.location.href=url} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>;
+                        const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(item.name+(dest?' '+dest:''))}`;
+                        const branches = (item.branches||[]).filter(b=>b.mapUrl);
+                        return <>
+                          <button onClick={()=>window.location.href=searchUrl} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>
+                          {branches.map((b,bi)=>(<button key={bi} onClick={()=>window.location.href=b.mapUrl} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 {b.name}</button>))}
+                          {!branches.length && item.mapUrl && <button onClick={()=>window.location.href=item.mapUrl} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 地圖</button>}
+                        </>;
                       })()}
                       </div>
                     </div>
@@ -3650,8 +3794,12 @@ function TripDetailScreen({ user, trip, onBack }) {
                       {(() => {
                         const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
                         const dest = Array.isArray(destArr)?destArr[0]:destArr||'';
-                        const url = `https://www.google.com/maps/search/${encodeURIComponent(item.name+(dest?' '+dest:''))}`;
-                        return <button onClick={()=>window.location.href=url} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>;
+                        const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(item.name+(dest?' '+dest:''))}`;
+                        const branches = (item.branches||[]).filter(b=>b.mapUrl);
+                        return <>
+                          <button onClick={()=>window.location.href=searchUrl} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>
+                          {branches.map((b,bi)=>(<button key={bi} onClick={()=>window.location.href=b.mapUrl} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 {b.name}</button>))}
+                        </>;
                       })()}
                     </div>
                   </div>
@@ -5313,6 +5461,9 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
         </div>
       )}
+      {/* 🗺 當天地圖 */}
+      {dayMapOpen && <DayMapModal date={selectedDate} itinerary={itinerary} foodItems={foodItems} trip={trip} onClose={()=>setDayMapOpen(false)}/>}
+
       {uploadModal.open && <UploadItineraryModal
         onClose={()=>setUploadModal({open:false})}
         user={user} trip={trip} members={members}
