@@ -5735,3 +5735,4 @@ export default function App() {
   if (currentTrip) return <ErrorBoundary><TripDetailScreen user={authUser} trip={currentTrip} onBack={() => setCurrentTrip(null)} />{inviteDialog}</ErrorBoundary>;
   return <>{<TripListScreen user={authUser} onEnterTrip={setCurrentTrip} />}{inviteDialog}</>;
 }
+
