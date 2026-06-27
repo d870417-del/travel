@@ -1691,35 +1691,98 @@ ${customReq.trim()?`\n⭐ 我的特殊需求（請務必納入考量）：${cust
 
 
 // ─── 當天地圖（Leaflet 內嵌）───
-function DayMapModal({ date, itinerary, foodItems, trip, onClose }) {
+function DayMapModal({ date, itinerary, foodItems, trip, tripDates, onClose, embedded }) {
   const containerRef = React.useRef(null);
   const mapRef = React.useRef(null);
+  const markersRef = React.useRef([]);
   const [status, setStatus] = React.useState('載入地圖中...');
   const [searchQ, setSearchQ] = React.useState('');
   const [searching, setSearching] = React.useState(false);
   const [searchMsg, setSearchMsg] = React.useState('');
+  const [viewMode, setViewMode] = React.useState(date==='待安排'?'all':'day'); // 'day' | 'all'
+  const geoCacheRef = React.useRef({});
   const _mk = ['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
   const MAPS_KEY = _mk.join('');
   const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
   const dest = (Array.isArray(destArr)?destArr[0]:destArr)||'';
 
+  // 每天一個顏色
+  const dayColors = ['#2A8FA5','#C07850','#3DAD8A','#9B6DC0','#D9544D','#E0A030','#5B8DD9','#C04890'];
+  const allDates = (tripDates||[]).filter(d=>d!=='待安排');
+  const colorForDate = (d) => {
+    const idx = allDates.indexOf(d);
+    return idx>=0 ? dayColors[idx%dayColors.length] : '#888';
+  };
+
   const geocode = async (name) => {
+    if(geoCacheRef.current[name]) return geoCacheRef.current[name];
     try {
       const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(name+' '+dest)}&language=zh-TW&key=${MAPS_KEY}`);
       const d = await r.json();
       const loc = d.results?.[0]?.geometry?.location;
-      return loc ? [loc.lat, loc.lng] : null;
+      const coords = loc ? [loc.lat, loc.lng] : null;
+      geoCacheRef.current[name] = coords;
+      return coords;
     } catch(e){ return null; }
   };
 
   const makeIcon = (L, color, emoji) => L.divIcon({
-    html: `<div style="background:${color};width:34px;height:34px;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.35)">${emoji}</div>`,
-    iconSize:[34,34], iconAnchor:[17,17], popupAnchor:[0,-20], className:''
+    html: `<div style="background:${color};width:32px;height:32px;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,0.35)">${emoji}</div>`,
+    iconSize:[32,32], iconAnchor:[16,16], popupAnchor:[0,-18], className:''
   });
 
-  const addMarker = (L, map, coords, color, emoji, label, navUrl) => {
+  const addMarker = (L, map, coords, color, emoji, label, navUrl, sub) => {
     const marker = L.marker(coords, { icon: makeIcon(L, color, emoji) }).addTo(map);
-    marker.bindPopup(`<div style="min-width:150px;font-family:sans-serif;padding:4px"><div style="font-weight:800;font-size:14px;margin-bottom:8px">${label}</div><button onclick="window.location.href='${navUrl.replace(/'/g,"\\'")}'" style="width:100%;background:${color};color:white;border:none;padding:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🧭 導航</button></div>`);
+    markersRef.current.push(marker);
+    marker.bindPopup(`<div style="min-width:150px;font-family:sans-serif;padding:4px"><div style="font-weight:800;font-size:14px;margin-bottom:2px">${label}</div>${sub?`<div style="font-size:11px;color:#888;margin-bottom:6px">${sub}</div>`:'<div style="margin-bottom:6px"></div>'}<button onclick="window.location.href='${navUrl.replace(/'/g,"\\'")}'" style="width:100%;background:${color};color:white;border:none;padding:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🧭 導航</button></div>`);
+    return marker;
+  };
+
+  const clearMarkers = () => {
+    markersRef.current.forEach(m=>m.remove());
+    markersRef.current = [];
+  };
+
+  // 繪製標記（依 viewMode）
+  const drawMarkers = async (L, map) => {
+    clearMarkers();
+    setStatus('標記地點中...');
+    const dates = viewMode==='day' ? (date==='待安排'?[]:[date]) : allDates;
+    const allCoords = [];
+    for(const d of dates){
+      const color = viewMode==='all' ? colorForDate(d) : '#2A8FA5';
+      // 景點
+      const dayItems = itinerary.filter(it=>it.date===d && it.category!=='交通' && it.category!=='住宿');
+      for(const item of dayItems){
+        const name = item.location||item.name||'';
+        if(!name) continue;
+        const coords = await geocode(name);
+        if(coords){ addMarker(L, map, coords, color, '📍', item.name, `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name+' '+dest)}`, viewMode==='all'?d:''); allCoords.push(coords); }
+      }
+      // 美食（當天連結的）
+      const dayFoods = foodItems.filter(f=>f.linkedDate===d);
+      for(const f of dayFoods){
+        const branches=(f.branches||[]).filter(b=>b.name);
+        if(branches.length>0){
+          for(const b of branches){
+            const coords=await geocode(`${f.name} ${b.name}`);
+            if(coords){ addMarker(L, map, coords, color, '🍜', `${f.name} ${b.name}`, b.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name+' '+b.name+' '+dest)}`, viewMode==='all'?d:''); allCoords.push(coords); }
+          }
+        } else {
+          const coords=await geocode(f.name);
+          if(coords){ addMarker(L, map, coords, color, '🍜', f.name, f.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name+' '+dest)}`, viewMode==='all'?d:''); allCoords.push(coords); }
+        }
+      }
+    }
+    // 全部美食清單（viewMode==='all' 時也顯示沒排進行程的美食，灰色）
+    if(viewMode==='all'){
+      for(const f of foodItems.filter(f=>!f.linkedDate)){
+        const coords=await geocode(f.name);
+        if(coords){ addMarker(L, map, coords, '#999', '🍜', f.name, f.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name+' '+dest)}`, '未排入行程'); allCoords.push(coords); }
+      }
+    }
+    if(allCoords.length>0){ map.fitBounds(allCoords, { padding:[50,50], maxZoom:15 }); }
+    setStatus('');
   };
 
   const searchNearby = async (q) => {
@@ -1730,22 +1793,23 @@ function DayMapModal({ date, itinerary, foodItems, trip, onClose }) {
       const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q+' '+dest)}&language=zh-TW&key=${MAPS_KEY}`);
       const d = await r.json();
       const results = d.results||[];
-      if(results.length===0){ setSearchMsg('找不到結果，換個關鍵字試試'); }
+      if(results.length===0){ setSearchMsg('找不到結果'); }
       else {
         results.slice(0,5).forEach(place => {
           const loc = place.geometry?.location;
           if(!loc) return;
           const name = place.formatted_address?.split(',')[0] || q;
           const navUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name+' '+dest)}&query_place_id=${place.place_id||''}`;
-          addMarker(L, map, [loc.lat,loc.lng], '#3DAD8A', '🔍', name, navUrl);
+          addMarker(L, map, [loc.lat,loc.lng], '#3DAD8A', '🔍', name, navUrl, '搜尋結果');
         });
         map.setView([results[0].geometry.location.lat, results[0].geometry.location.lng], 15);
-        setSearchMsg(`找到 ${Math.min(results.length,5)} 個結果`);
+        setSearchMsg(`找到 ${Math.min(results.length,5)} 個`);
       }
-    } catch(e){ setSearchMsg('搜尋失敗，請重試'); }
+    } catch(e){ setSearchMsg('搜尋失敗'); }
     setSearching(false);
   };
 
+  // 初始化地圖
   React.useEffect(() => {
     if(!containerRef.current) return;
     let cancelled = false;
@@ -1764,47 +1828,45 @@ function DayMapModal({ date, itinerary, foodItems, trip, onClose }) {
       const L = window.L;
       const center = await geocode(dest) || [33.5903,130.4017];
       if(cancelled) return;
-      const map = L.map(containerRef.current).setView(center, 14);
+      const map = L.map(containerRef.current).setView(center, 13);
       mapRef.current = map;
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'© OpenStreetMap', maxZoom:19 }).addTo(map);
-      setStatus('標記地點中...');
-      const dayItems = date==='待安排' ? [] : itinerary.filter(it=>it.date===date && it.category!=='交通' && it.category!=='住宿');
-      for(const item of dayItems){
-        if(cancelled) return;
-        const name = item.location||item.name||'';
-        if(!name) continue;
-        const coords = await geocode(name);
-        if(coords) addMarker(L, map, coords, '#2A8FA5', '📍', item.name, `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name+' '+dest)}`);
-      }
-      const dayFoods = date==='待安排' ? [] : foodItems.filter(f=>f.linkedDate===date);
-      for(const f of dayFoods){
-        if(cancelled) return;
-        const branches = (f.branches||[]).filter(b=>b.name);
-        if(branches.length>0){
-          for(const b of branches){
-            const coords = await geocode(`${f.name} ${b.name}`);
-            if(coords) addMarker(L, map, coords, '#C07850', '🍜', `${f.name} ${b.name}`, b.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name+' '+b.name+' '+dest)}`);
-          }
-        } else {
-          const coords = await geocode(f.name);
-          if(coords) addMarker(L, map, coords, '#C07850', '🍜', f.name, f.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name+' '+dest)}`);
-        }
-      }
-      if(!cancelled) setStatus('');
+      await drawMarkers(L, map);
     };
-    init().catch(()=>setStatus('地圖載入失敗，請確認網路'));
+    init().catch(()=>setStatus('地圖載入失敗'));
     return () => { cancelled=true; if(mapRef.current){ mapRef.current.remove(); mapRef.current=null; } };
   }, []);
 
+  // 切換 viewMode 時重繪
+  React.useEffect(() => {
+    if(mapRef.current && window.L){ drawMarkers(window.L, mapRef.current); }
+  }, [viewMode]);
+
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', backgroundColor:'#1a1a2e' }}>
-      <div style={{ padding:'52px 16px 10px', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
-        <button onClick={onClose} style={{ background:'none', border:'none', color:'white', fontSize:22, cursor:'pointer', padding:4 }}>←</button>
-        <div style={{ color:'white', fontWeight:800, fontSize:15, flex:1 }}>{date==='待安排'?'全部':date} 地圖</div>
-        <span style={{ color:'#5BB8CC', fontSize:11, fontWeight:700 }}>📍景點</span>
-        <span style={{ color:'#D89B6F', fontSize:11, fontWeight:700 }}>🍜美食</span>
-        <span style={{ color:'#3DAD8A', fontSize:11, fontWeight:700 }}>🔍搜尋</span>
+    <div style={embedded
+      ? { position:'relative', display:'flex', flexDirection:'column', backgroundColor:'#1a1a2e', borderRadius:16, overflow:'hidden', height:'calc(100vh - 320px)', minHeight:400 }
+      : { position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', backgroundColor:'#1a1a2e' }}>
+      <div style={{ padding:embedded?'12px 14px 8px':'52px 16px 8px', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+        {!embedded && <button onClick={onClose} style={{ background:'none', border:'none', color:'white', fontSize:22, cursor:'pointer', padding:4 }}>←</button>}
+        {!embedded && <div style={{ color:'white', fontWeight:800, fontSize:15, flex:1 }}>行程地圖</div>}
+        {embedded && <div style={{ flex:1 }}/>}
+        {/* 當天/全部 切換 */}
+        <div style={{ display:'flex', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:20, padding:2 }}>
+          <button onClick={()=>setViewMode('day')} disabled={date==='待安排'} style={{ padding:'5px 12px', borderRadius:18, border:'none', backgroundColor:viewMode==='day'?'#2A8FA5':'transparent', color:'white', fontSize:12, fontWeight:700, cursor:'pointer', opacity:date==='待安排'?0.4:1 }}>當天</button>
+          <button onClick={()=>setViewMode('all')} style={{ padding:'5px 12px', borderRadius:18, border:'none', backgroundColor:viewMode==='all'?'#2A8FA5':'transparent', color:'white', fontSize:12, fontWeight:700, cursor:'pointer' }}>全部</button>
+        </div>
       </div>
+      {/* 全部模式：顯示日期顏色圖例 */}
+      {viewMode==='all' && (
+        <div style={{ padding:'0 16px 8px', display:'flex', gap:10, flexWrap:'wrap', flexShrink:0 }}>
+          {allDates.map(d=>(
+            <span key={d} style={{ display:'flex', alignItems:'center', gap:4, color:'white', fontSize:11 }}>
+              <span style={{ width:10, height:10, borderRadius:'50%', backgroundColor:colorForDate(d) }}/>{d}
+            </span>
+          ))}
+          <span style={{ display:'flex', alignItems:'center', gap:4, color:'white', fontSize:11 }}><span style={{ width:10, height:10, borderRadius:'50%', backgroundColor:'#999' }}/>未排美食</span>
+        </div>
+      )}
       <div style={{ padding:'0 12px 6px', display:'flex', gap:8, flexShrink:0 }}>
         <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') searchNearby(searchQ); }} placeholder={`在${dest||'目的地'}附近搜尋...`} style={{ flex:1, padding:'9px 14px', borderRadius:20, border:'none', fontSize:13, outline:'none' }}/>
         <button onClick={()=>searchNearby(searchQ)} disabled={searching} style={{ padding:'9px 18px', borderRadius:20, border:'none', backgroundColor:'#2A8FA5', color:'white', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0 }}>{searching?'⏳':'搜尋'}</button>
@@ -2566,19 +2628,26 @@ function TripDetailScreen({ user, trip, onBack }) {
 
   // ── 底部 Tab Bar ──
   const TabBar = () => {
+    const icons = {
+      itinerary: (active) => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active?color:C.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+      food: (active) => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active?color:C.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11h18M5 11a7 7 0 0 1 14 0M12 3v2M4 21h16M6 15h12"/></svg>,
+      wallet: (active) => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active?color:C.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h.01M2 10h20"/></svg>,
+      shopping: (active) => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active?color:C.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
+      more: (active) => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active?color:C.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>,
+    };
     const tabs = [
-      { id:'itinerary', emoji:'🗓', label:'行程' },
-      { id:'food', emoji:'🍜', label:'美食' },
-      { id:'wallet', emoji:'💰', label:'帳務' },
-      { id:'shopping', emoji:'🛍', label:'購物' },
-      { id:'more', emoji:'⋯', label:'更多' },
+      { id:'itinerary', label:'行程' },
+      { id:'food', label:'美食' },
+      { id:'wallet', label:'帳務' },
+      { id:'shopping', label:'購物' },
+      { id:'more', label:'更多' },
     ];
     return (
       <div style={{ display:'flex', borderTop:`1px solid ${C.border}`, backgroundColor:C.surface, flexShrink:0, paddingBottom:24 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); if(t.id!=='more') setMoreSection(null); }}
-            style={{ flex:1, padding:'10px 4px 6px', border:'none', backgroundColor:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-            <span style={{ fontSize:22 }}>{t.emoji}</span>
+            style={{ flex:1, padding:'10px 4px 6px', border:'none', backgroundColor:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+            {icons[t.id](tab===t.id)}
             <span style={{ fontSize:10, fontWeight:700, color:tab===t.id?color:C.textMuted }}>{t.label}</span>
             {tab===t.id && <div style={{ width:20, height:3, borderRadius:2, backgroundColor:color }} />}
           </button>
@@ -2596,9 +2665,17 @@ function TripDetailScreen({ user, trip, onBack }) {
       <div style={{ position:'sticky', top:0, zIndex:30, backgroundColor:C.surface, borderBottom:`1px solid ${C.border}`, padding:'10px 16px' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
           <span style={{ fontSize:11, fontWeight:700, color:C.textMuted, textTransform:'uppercase' }}>選擇日期</span>
-          <div style={{ display:'flex', gap:6 }}>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {/* 清單/地圖 切換 */}
+            <div style={{ display:'flex', backgroundColor:C.bg, borderRadius:9, padding:2, border:`1px solid ${C.border}` }}>
+              <button onClick={()=>setItinView('list')} title="清單" style={{ width:30, height:26, borderRadius:7, border:'none', backgroundColor:itinView==='list'?color:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={itinView==='list'?'#fff':C.textMuted} strokeWidth="2.2" strokeLinecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              </button>
+              <button onClick={()=>setItinView('map')} title="地圖" style={{ width:30, height:26, borderRadius:7, border:'none', backgroundColor:itinView==='map'?color:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={itinView==='map'?'#fff':C.textMuted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+              </button>
+            </div>
             <button onClick={()=>setTravelInfoOpen(true)} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.warm}44`, backgroundColor:C.warmSoft, color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>交通住宿</button>
-            <button onClick={()=>setUploadModal({open:true})} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>匯入</button>
             <button onClick={() => setDatePickerOpen(true)} style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${color}44`, backgroundColor:color+'18', color, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>＋日期</button>
           </div>
         </div>
@@ -2611,7 +2688,12 @@ function TripDetailScreen({ user, trip, onBack }) {
           ))}
         </div>
       </div>
-      {/* 行程列表 */}
+      {/* 行程列表 / 地圖切換 */}
+      {itinView==='map' ? (
+        <div style={{ padding:16, flex:1 }}>
+          <DayMapModal date={selectedDate} itinerary={itinerary} foodItems={foodItems} trip={trip} tripDates={tripDates} embedded={true} onClose={()=>{}}/>
+        </div>
+      ) : (
       <div style={{ padding:16, flex:1 }}>
         {/* 當天的交通住宿 */}
         {selectedDate!=='待安排' && (() => {
@@ -2702,22 +2784,21 @@ function TripDetailScreen({ user, trip, onBack }) {
             ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0]+(dest?' '+dest:''))}`
             : `https://www.google.com/maps/search/${encodeURIComponent(places.join(' ')+(dest?' '+dest:''))}`;
           return (
-            <div style={{ display:'flex', gap:8, marginBottom:10 }}>
-              <button onClick={()=>setDayMapOpen(true)} style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px solid ${C.blue}44`, backgroundColor:C.blueSoft, color:C.blue, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                🗺 當天地圖（{places.length}個）
+            <div style={{ display:'flex', gap:8, marginBottom:10, alignItems:'stretch' }}>
+              <button onClick={()=>window.location.href=url} style={{ flex:1, padding:'8px 10px', borderRadius:10, border:`1.5px solid ${C.green}44`, backgroundColor:C.greenSoft, color:C.green, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                Google Map 導航（{places.length}個）
               </button>
-              {selectedDate!=='待安排' && (
-                <button onClick={()=>setShowFoodPicker(p=>!p)} style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                  🍜 {showFoodPicker ? '收起美食' : '附近美食'}
-                </button>
-              )}
+              <button onClick={()=>setShowFoodPicker(p=>!p)} title="加美食到行程" style={{ width:40, borderRadius:10, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.warm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11h18M5 11a7 7 0 0 1 14 0M12 3v2M4 21h16"/></svg>
+              </button>
             </div>
           );
         })()}
         {selectedDate!=='待安排' && !filteredItinerary.length && (
-          <button onClick={()=>setShowFoodPicker(p=>!p)} style={{ width:'100%', marginBottom:10, padding:'7px 10px', borderRadius:10, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-            🍜 {showFoodPicker ? '收起美食' : '附近美食'}
-          </button>
+          <div style={{ display:'flex', marginBottom:10 }}>
+            <button onClick={()=>setShowFoodPicker(p=>!p)} style={{ flex:1, padding:'7px 10px', borderRadius:10, border:`1.5px dashed ${C.warm}66`, backgroundColor:showFoodPicker?C.warmSoft:'transparent', color:C.warm, fontSize:12, fontWeight:700, cursor:'pointer' }}>🍜 從美食清單加入</button>
+          </div>
         )}
         {showFoodPicker && selectedDate!=='待安排' && (
           <div style={{ ...gs.card, marginBottom:12, padding:14, border:`1.5px solid ${C.warm}33` }}>
@@ -2787,7 +2868,12 @@ function TripDetailScreen({ user, trip, onBack }) {
           </div>
         )}
       </div>
-      {/* 新增按鈕 */}
+      )}
+      {/* 新增 + 匯入按鈕 */}
+      <button onClick={()=>setUploadModal({open:true})}
+        style={{ position:'fixed', bottom:152, right:20, width:46, height:46, borderRadius:14, border:'none', backgroundColor:C.surface, color:color, fontSize:20, cursor:'pointer', boxShadow:`0 4px 12px rgba(0,0,0,0.15)`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, border:`1.5px solid ${color}44` }} title="匯入行程">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
       <button onClick={() => { setModal({open:true,data:{category:'景點',date:selectedDate}}); setTempPhotos([]); }}
         style={{ position:'fixed', bottom:90, right:20, width:52, height:52, borderRadius:16, border:'none', background:`linear-gradient(135deg,${color},${C.purple})`, color:'#fff', fontSize:26, cursor:'pointer', boxShadow:`0 4px 16px ${color}66`, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}>＋</button>
     </div>
@@ -2799,6 +2885,7 @@ function TripDetailScreen({ user, trip, onBack }) {
   const [placeSearchModal, setPlaceSearchModal] = useState(false);
   const [showFoodPicker, setShowFoodPicker] = useState(false);
   const [dayMapOpen, setDayMapOpen] = useState(false);
+  const [itinView, setItinView] = useState('list'); // 'list' | 'map'
   const [placeSearchQuery, setPlaceSearchQuery] = useState('');
   const [placeSearchResults, setPlaceSearchResults] = useState([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
@@ -5520,7 +5607,7 @@ function TripDetailScreen({ user, trip, onBack }) {
         </div>
       )}
       {/* 🗺 當天地圖 */}
-      {dayMapOpen && <DayMapModal date={selectedDate} itinerary={itinerary} foodItems={foodItems} trip={trip} onClose={()=>setDayMapOpen(false)}/>}
+      {dayMapOpen && <DayMapModal date={selectedDate} itinerary={itinerary} foodItems={foodItems} trip={trip} tripDates={tripDates} onClose={()=>setDayMapOpen(false)}/>}
 
       {uploadModal.open && <UploadItineraryModal
         onClose={()=>setUploadModal({open:false})}
