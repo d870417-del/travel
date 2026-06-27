@@ -1812,68 +1812,6 @@ function DayMapModal({ date, itinerary, foodItems, trip, onClose }) {
     });
   };
 
-  const searchNearby = async (L, map, q) => {
-    if(!q.trim()||!map) return;
-    setSearching(true);
-    try {
-      const r = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q+' '+dest)}&language=zh-TW&key=${MAPS_KEY}`);
-      const d = await r.json();
-      (d.results||[]).slice(0,8).forEach(place => {
-        const loc = place.geometry?.location;
-        if(!loc) return;
-        const marker = L.marker([loc.lat,loc.lng], { icon: makeIcon(L,'#3DAD8A','🔍') }).addTo(map);
-        const nav = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name+' '+dest)}`;
-        marker.bindPopup(`<div style="min-width:150px;font-family:sans-serif;padding:4px">
-          <div style="font-weight:800;font-size:14px;margin-bottom:2px">${place.name}</div>
-          <div style="font-size:11px;color:#888;margin-bottom:6px">⭐ ${place.rating||'-'} · ${place.vicinity||''}</div>
-          <button onclick="window.location.href='${nav}'" style="width:100%;background:#3DAD8A;color:white;border:none;padding:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🧭 導航</button>
-        </div>`);
-      });
-      map.setZoom(14);
-    } catch(e){}
-    setSearching(false);
-  };
-
-  React.useEffect(() => {
-    if(!containerRef.current) return;
-    let cancelled = false;
-    const init = async () => {
-      // Load Leaflet
-      if(!window.L) {
-        const lnk = document.createElement('link');
-        lnk.rel='stylesheet'; lnk.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(lnk);
-        await new Promise((res,rej) => {
-          const s = document.createElement('script');
-          s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-          s.onload=res; s.onerror=rej; document.head.appendChild(s);
-        });
-      }
-      if(cancelled) return;
-      const L = window.L;
-      // Center on destination
-      const center = await geocode(dest) || [33.5903,130.4017];
-      if(cancelled) return;
-      const map = L.map(containerRef.current).setView(center, 14);
-      mapRef.current = map;
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'© OpenStreetMap', maxZoom:19 }).addTo(map);
-      setStatus('標記地點中...');
-      // 行程 pins（藍）
-      const dayItems = date==='待安排' ? [] : itinerary.filter(it=>it.date===date && it.category!=='交通' && it.category!=='住宿');
-      await addMarkers(L, map, dayItems, '#2A8FA5', '📍', it=>it.name, it=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((it.location||it.name)+' '+dest)}`);
-      // 美食 pins（橘）
-      const foodFlat = [];
-      foodItems.forEach(f => {
-        const branches = (f.branches||[]).filter(b=>b.name);
-        if(branches.length>0) branches.forEach(b=>foodFlat.push({...f, _geoName:`${f.name} ${b.name}`, _label:`${f.name} ${b.name}`}));
-        else foodFlat.push({...f, _geoName:f.name, _label:f.name});
-      });
-      await addMarkers(L, map, foodFlat, '#C07850', '🍜', it=>it._label, it=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it._geoName+' '+dest)}`);
-      if(!cancelled) setStatus('');
-    };
-    init().catch(()=>setStatus('地圖載入失敗，請確認網路'));
-    return () => { cancelled=true; if(mapRef.current){ mapRef.current.remove(); mapRef.current=null; } };
-  }, []);
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', backgroundColor:'#1a1a2e' }}>
