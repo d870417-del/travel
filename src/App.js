@@ -1633,6 +1633,149 @@ function DayMapModal({ date, itinerary, foodItems, trip, onClose }) {
   const [status, setStatus] = React.useState('載入地圖中...');
   const [searchQ, setSearchQ] = React.useState('');
   const [searching, setSearching] = React.useState(false);
+  const [searchMsg, setSearchMsg] = React.useState('');
+  const _mk = ['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
+  const MAPS_KEY = _mk.join('');
+  const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
+  const dest = (Array.isArray(destArr)?destArr[0]:destArr)||'';
+
+  const geocode = async (name) => {
+    try {
+      const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(name+' '+dest)}&language=zh-TW&key=${MAPS_KEY}`);
+      const d = await r.json();
+      const loc = d.results?.[0]?.geometry?.location;
+      return loc ? [loc.lat, loc.lng] : null;
+    } catch(e){ return null; }
+  };
+
+  const makeIcon = (L, color, emoji) => L.divIcon({
+    html: `<div style="background:${color};width:34px;height:34px;border-radius:50%;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.35)">${emoji}</div>`,
+    iconSize:[34,34], iconAnchor:[17,17], popupAnchor:[0,-20], className:''
+  });
+
+  const addMarker = (L, map, coords, color, emoji, label, navUrl) => {
+    const marker = L.marker(coords, { icon: makeIcon(L, color, emoji) }).addTo(map);
+    marker.bindPopup(`<div style="min-width:150px;font-family:sans-serif;padding:4px">
+      <div style="font-weight:800;font-size:14px;margin-bottom:8px">${label}</div>
+      <button onclick="(function(){window.location.href='${navUrl.replace(/'/g,"\\'")}'})()" style="width:100%;background:${color};color:white;border:none;padding:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🧭 導航</button>
+    </div>`);
+    return marker;
+  };
+
+  const searchNearby = async (q) => {
+    const L = window.L; const map = mapRef.current;
+    if(!q.trim()||!map||!L) return;
+    setSearching(true); setSearchMsg('');
+    // 用 Geocoding API 搜尋（支援瀏覽器）
+    try {
+      const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q+' '+dest)}&language=zh-TW&key=${MAPS_KEY}`);
+      const d = await r.json();
+      const results = d.results||[];
+      if(results.length===0){ setSearchMsg('找不到結果，換個關鍵字試試'); }
+      else {
+        results.slice(0,5).forEach(place => {
+          const loc = place.geometry?.location;
+          if(!loc) return;
+          const name = place.formatted_address?.split(',')[0] || q;
+          const navUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name+' '+dest)}&query_place_id=${place.place_id||''}`;
+          addMarker(L, map, [loc.lat,loc.lng], '#3DAD8A', '🔍', name, navUrl);
+        });
+        map.setView([results[0].geometry.location.lat, results[0].geometry.location.lng], 15);
+        setSearchMsg(`找到 ${Math.min(results.length,5)} 個結果`);
+      }
+    } catch(e){ setSearchMsg('搜尋失敗，請重試'); }
+    setSearching(false);
+  };
+
+  React.useEffect(() => {
+    if(!containerRef.current) return;
+    let cancelled = false;
+    const init = async () => {
+      if(!window.L) {
+        const lnk = document.createElement('link');
+        lnk.rel='stylesheet'; lnk.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(lnk);
+        await new Promise((res,rej) => {
+          const s = document.createElement('script');
+          s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          s.onload=res; s.onerror=rej; document.head.appendChild(s);
+        });
+      }
+      if(cancelled) return;
+      const L = window.L;
+      const center = await geocode(dest) || [33.5903,130.4017];
+      if(cancelled) return;
+      const map = L.map(containerRef.current).setView(center, 14);
+      mapRef.current = map;
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'© OpenStreetMap', maxZoom:19 }).addTo(map);
+      setStatus('標記地點中...');
+
+      // 行程 pins（藍）— 只顯示當天的
+      const dayItems = date==='待安排' ? [] : itinerary.filter(it=>it.date===date && it.category!=='交通' && it.category!=='住宿');
+      for(const item of dayItems){
+        if(cancelled) return;
+        const name = item.location||item.name||'';
+        if(!name) continue;
+        const coords = await geocode(name);
+        if(coords) addMarker(L, map, coords, '#2A8FA5', '📍', item.name,
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name+' '+dest)}`);
+      }
+
+      // 美食 pins（橘）— 只顯示跟當天有關的美食（linkedDate === date）
+      const dayFoods = date==='待安排' ? [] : foodItems.filter(f=>f.linkedDate===date);
+      for(const f of dayFoods){
+        if(cancelled) return;
+        const branches = (f.branches||[]).filter(b=>b.name);
+        if(branches.length>0){
+          for(const b of branches){
+            const coords = await geocode(`${f.name} ${b.name}`);
+            if(coords) addMarker(L, map, coords, '#C07850', '🍜', `${f.name} ${b.name}`,
+              b.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name+' '+b.name+' '+dest)}`);
+          }
+        } else {
+          const coords = await geocode(f.name);
+          if(coords) addMarker(L, map, coords, '#C07850', '🍜', f.name,
+            f.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name+' '+dest)}`);
+        }
+      }
+      if(!cancelled) setStatus('');
+    };
+    init().catch(()=>setStatus('地圖載入失敗，請確認網路'));
+    return () => { cancelled=true; if(mapRef.current){ mapRef.current.remove(); mapRef.current=null; } };
+  }, []);
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', backgroundColor:'#1a1a2e' }}>
+      <div style={{ padding:'52px 16px 10px', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+        <button onClick={onClose} style={{ background:'none', border:'none', color:'white', fontSize:22, cursor:'pointer', padding:4 }}>←</button>
+        <div style={{ color:'white', fontWeight:800, fontSize:15, flex:1 }}>{date==='待安排'?'全部':date} 地圖</div>
+        <span style={{ color:'#2A8FA5', fontSize:11, fontWeight:700 }}>📍景點</span>
+        <span style={{ color:'#C07850', fontSize:11, fontWeight:700 }}>🍜美食</span>
+        <span style={{ color:'#3DAD8A', fontSize:11, fontWeight:700 }}>🔍搜尋</span>
+      </div>
+      <div style={{ padding:'0 12px 6px', display:'flex', gap:8, flexShrink:0 }}>
+        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter') searchNearby(searchQ); }}
+          placeholder={`在${dest||'目的地'}附近搜尋...`}
+          style={{ flex:1, padding:'9px 14px', borderRadius:20, border:'none', fontSize:13, outline:'none' }}/>
+        <button onClick={()=>searchNearby(searchQ)} disabled={searching}
+          style={{ padding:'9px 18px', borderRadius:20, border:'none', backgroundColor:'#2A8FA5', color:'white', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0 }}>
+          {searching?'⏳':'搜尋'}
+        </button>
+      </div>
+      {searchMsg && <div style={{ padding:'0 16px 6px', color:'#aaa', fontSize:12 }}>{searchMsg}</div>}
+      <div style={{ flex:1, position:'relative' }}>
+        {status && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', backgroundColor:'rgba(0,0,0,0.6)', color:'white', zIndex:10, fontSize:14, flexDirection:'column', gap:8 }}><div>⏳</div><div>{status}</div></div>}
+        <div ref={containerRef} style={{ width:'100%', height:'100%' }}/>
+      </div>
+    </div>
+  );
+}
+  const containerRef = React.useRef(null);
+  const mapRef = React.useRef(null);
+  const [status, setStatus] = React.useState('載入地圖中...');
+  const [searchQ, setSearchQ] = React.useState('');
+  const [searching, setSearching] = React.useState(false);
   const _mk = ['AIzaSyCsOqxQ','n5sIyEmXpK1l','7R4vTBpqz3-OaOQ'];
   const MAPS_KEY = _mk.join('');
   const destArr = trip.destinations||(trip.destination?[trip.destination]:[]);
@@ -2865,7 +3008,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         const branches = (item.branches||[]).filter(b=>b.mapUrl);
                         return <>
                           <button onClick={()=>window.location.href=searchUrl} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>
-                          {branches.map((b,bi)=>(<button key={bi} onClick={()=>window.location.href=b.mapUrl} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 {b.name}</button>))}
+                          {branches.map((b,bi)=>{const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);const dest=Array.isArray(destArr)?destArr[0]:destArr||'';const bUrl=b.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name+' '+b.name+' '+dest)}&query_place_id=`;return(<button key={bi} onClick={()=>window.location.href=bUrl} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 {b.name}</button>);})}
                           {!branches.length && item.mapUrl && <button onClick={()=>window.location.href=item.mapUrl} style={{ padding:'5px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 地圖</button>}
                         </>;
                       })()}
@@ -3798,7 +3941,7 @@ function TripDetailScreen({ user, trip, onBack }) {
                         const branches = (item.branches||[]).filter(b=>b.mapUrl);
                         return <>
                           <button onClick={()=>window.location.href=searchUrl} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>🗺 附近分店</button>
-                          {branches.map((b,bi)=>(<button key={bi} onClick={()=>window.location.href=b.mapUrl} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 {b.name}</button>))}
+                          {branches.map((b,bi)=>{const destArr=trip.destinations||(trip.destination?[trip.destination]:[]);const dest=Array.isArray(destArr)?destArr[0]:destArr||'';const bUrl=b.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name+' '+b.name+' '+dest)}`;return(<button key={bi} onClick={()=>window.location.href=bUrl} style={{ padding:'4px 10px', borderRadius:8, border:`1px solid ${C.warmBorder}`, backgroundColor:C.warmSoft, color:C.warm, fontSize:11, fontWeight:700, cursor:'pointer' }}>📍 {b.name}</button>);})}
                         </>;
                       })()}
                     </div>
