@@ -1859,54 +1859,6 @@ function DayMapModal({ date, itinerary, foodItems, trip, onClose }) {
     iconSize:[34,34], iconAnchor:[17,17], popupAnchor:[0,-20], className:''
   });
 
-  const addMarkers = async (L, map, items, color, emoji, labelFn, navFn) => {
-    const results = await Promise.all(items.map(async it => {
-      const name = it._geoName || it.location || it.name || '';
-      if(!name) return null;
-      const coords = await geocode(name);
-      return coords ? { it, coords } : null;
-    }));
-    results.filter(Boolean).forEach(({ it, coords }) => {
-      const marker = L.marker(coords, { icon: makeIcon(L, color, emoji) }).addTo(map);
-      const nav = navFn(it);
-      marker.bindPopup(`<div style="min-width:150px;font-family:sans-serif;padding:4px">
-        <div style="font-weight:800;font-size:14px;margin-bottom:6px">${labelFn(it)}</div>
-        <button onclick="window.location.href='${nav}'" style="width:100%;background:${color};color:white;border:none;padding:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🧭 導航</button>
-      </div>`);
-    });
-  };
-
-
-  return (
-    <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', backgroundColor:'#1a1a2e' }}>
-      {/* Header */}
-      <div style={{ padding:'52px 16px 10px', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
-        <button onClick={onClose} style={{ background:'none', border:'none', color:'white', fontSize:22, cursor:'pointer', padding:4 }}>←</button>
-        <div style={{ color:'white', fontWeight:800, fontSize:15, flex:1 }}>{date==='待安排'?'全部美食地圖':date+' 地圖'}</div>
-        <div style={{ display:'flex', gap:8 }}>
-          <span style={{ color:'#2A8FA5', fontSize:11, fontWeight:700 }}>📍景點</span>
-          <span style={{ color:'#C07850', fontSize:11, fontWeight:700 }}>🍜美食</span>
-          <span style={{ color:'#3DAD8A', fontSize:11, fontWeight:700 }}>🔍搜尋</span>
-        </div>
-      </div>
-      {/* Search */}
-      <div style={{ padding:'0 12px 10px', display:'flex', gap:8, flexShrink:0 }}>
-        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)}
-          onKeyDown={e=>{ if(e.key==='Enter') searchNearby(window.L, mapRef.current, searchQ); }}
-          placeholder="搜尋附近美食或景點..."
-          style={{ flex:1, padding:'9px 14px', borderRadius:20, border:'none', fontSize:13, outline:'none' }}/>
-        <button onClick={()=>searchNearby(window.L, mapRef.current, searchQ)} disabled={searching}
-          style={{ padding:'9px 18px', borderRadius:20, border:'none', backgroundColor:'#2A8FA5', color:'white', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0 }}>
-          {searching?'⏳':'搜尋'}
-        </button>
-      </div>
-      {/* Map */}
-      <div style={{ flex:1, position:'relative' }}>
-        {status && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', backgroundColor:'rgba(0,0,0,0.6)', color:'white', zIndex:10, fontSize:14, flexDirection:'column', gap:8 }}><div>⏳</div><div>{status}</div></div>}
-        <div ref={containerRef} style={{ width:'100%', height:'100%' }}/>
-      </div>
-    </div>
-  );
 }
 
 function TripDetailScreen({ user, trip, onBack }) {
