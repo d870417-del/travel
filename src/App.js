@@ -365,6 +365,9 @@ function TripListScreen({ user, onEnterTrip }) {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [profileModal, setProfileModal] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileEmoji, setProfileEmoji] = useState('');
 
   useEffect(() => { loadTrips(); }, [user.uid]);
 
@@ -421,13 +424,23 @@ function TripListScreen({ user, onEnterTrip }) {
 
   return (
     <div style={gs.app}>
-      {/* Header 縮小版 */}
+      {/* Header */}
       <div style={{ padding: "52px 20px 14px", backgroundColor: C.surface, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 12, color: C.textMuted }}>{greeting()}，</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{user.displayName || "旅行者"} 👋</div>
-          </div>
+          <button onClick={()=>{ setProfileName(user.displayName||''); setProfileEmoji(user.photoURL||''); setProfileModal(true); }}
+            style={{ display:'flex', alignItems:'center', gap:10, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+            <div style={{ width:40, height:40, borderRadius:'50%', backgroundColor:C.blue+'18', border:`1.5px solid ${C.blue}44`, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
+              {user.photoURL && user.photoURL.startsWith('data:') ? (
+                <img src={user.photoURL} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+              ) : (
+                <span style={{ fontSize:user.photoURL?20:16, fontWeight:700, color:C.blue }}>{user.photoURL || (user.displayName||'?')[0].toUpperCase()}</span>
+              )}
+            </div>
+            <div style={{ textAlign:'left' }}>
+              <div style={{ fontSize:12, color:C.textMuted }}>{greeting()}，</div>
+              <div style={{ fontSize:16, fontWeight:800 }}>{user.displayName||'旅行者'} 👋</div>
+            </div>
+          </button>
           <button onClick={() => setConfirmLogout(true)}
             style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "6px 12px", color: C.textMuted, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>
             登出
@@ -523,6 +536,57 @@ function TripListScreen({ user, onEnterTrip }) {
 
       {showCreate && <CreateTripModal user={user} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); loadTrips(); }} />}
       {showJoin && <JoinTripModal user={user} onClose={() => setShowJoin(false)} onJoined={trip => { setShowJoin(false); onEnterTrip(trip); }} />}
+      {/* 個人資料編輯 */}
+      {profileModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+          <div onClick={()=>setProfileModal(false)} style={{ position:'absolute', inset:0, backgroundColor:'rgba(42,37,30,0.6)' }}/>
+          <div style={{ ...gs.card, position:'relative', width:'100%', maxWidth:400, padding:24, maxHeight:'85vh', overflowY:'auto' }}>
+            <div style={{ fontSize:17, fontWeight:800, marginBottom:18 }}>個人資料</div>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>
+              <div style={{ width:80, height:80, borderRadius:'50%', backgroundColor:C.blue+'18', border:`2px solid ${C.blue}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:38, overflow:'hidden' }}>
+                {profileEmoji && profileEmoji.startsWith('data:') ? <img src={profileEmoji} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : (profileEmoji || (profileName||'?')[0].toUpperCase())}
+              </div>
+            </div>
+            <div style={{ textAlign:'center', fontSize:12, color:C.textMuted, marginBottom:20 }}>{user.email}</div>
+            <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>暱稱</div>
+            <input value={profileName} onChange={e=>setProfileName(e.target.value)} placeholder="輸入你的名稱" style={{ ...gs.input, marginBottom:18 }}/>
+            <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>上傳照片</div>
+            <input type="file" accept="image/*" id="avatar-up-home" style={{ display:'none' }} onChange={e=>{
+              const f=e.target.files[0]; if(!f) return;
+              const reader=new FileReader();
+              reader.onload=ev=>{
+                const img=new Image(); img.onload=()=>{
+                  const size=200, canvas=document.createElement('canvas');
+                  canvas.width=size; canvas.height=size;
+                  const ctx=canvas.getContext('2d'); const m=Math.min(img.width,img.height);
+                  ctx.drawImage(img,(img.width-m)/2,(img.height-m)/2,m,m,0,0,size,size);
+                  setProfileEmoji(canvas.toDataURL('image/jpeg',0.7));
+                }; img.src=ev.target.result;
+              }; reader.readAsDataURL(f);
+            }}/>
+            <label htmlFor="avatar-up-home" style={{ display:'block', textAlign:'center', padding:'10px', borderRadius:10, border:`1.5px dashed ${C.blue}66`, backgroundColor:C.blue+'10', color:C.blue, fontSize:13, fontWeight:700, cursor:'pointer', marginBottom:14 }}>📷 從相簿選照片</label>
+            <div style={{ fontSize:13, fontWeight:700, color:C.textMuted, marginBottom:6 }}>或選 emoji</div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18 }}>
+              <button onClick={()=>setProfileEmoji('')} style={{ width:42, height:42, borderRadius:'50%', border:`1.5px solid ${!profileEmoji?C.blue:C.border}`, backgroundColor:!profileEmoji?C.blue+'18':C.bg, fontSize:14, fontWeight:700, color:C.blue, cursor:'pointer' }}>{(profileName||'?')[0].toUpperCase()}</button>
+              {['😀','😎','🥰','🤩','🐱','🐶','🐰','🐻','🦊','🐼','🌸','🌟','🍜','✈️','🎒','🏝'].map(em=>(
+                <button key={em} onClick={()=>setProfileEmoji(em)} style={{ width:42, height:42, borderRadius:'50%', border:`1.5px solid ${profileEmoji===em?C.blue:C.border}`, backgroundColor:profileEmoji===em?C.blue+'18':C.bg, fontSize:21, cursor:'pointer' }}>{em}</button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={()=>setProfileModal(false)} style={{ flex:1, padding:12, borderRadius:12, border:`1px solid ${C.border}`, backgroundColor:C.bg, color:C.textMuted, fontWeight:700, fontSize:14, cursor:'pointer' }}>取消</button>
+              <button onClick={async()=>{
+                const newName=profileName.trim(); if(!newName) return;
+                try {
+                  await updateProfile(auth.currentUser, { displayName:newName, photoURL:profileEmoji||'' });
+                  await setDoc(doc(db,"users",user.uid), { displayName:newName, photoURL:profileEmoji||'', email:user.email }, { merge:true });
+                  setProfileModal(false);
+                } catch(err){ alert('更新失敗，請重試'); }
+              }} style={{ flex:2, padding:12, borderRadius:12, border:'none', background:`linear-gradient(135deg,${C.blue},${C.green})`, color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer' }}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmLogout && (
         <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:24, backgroundColor:'rgba(45,42,36,0.5)' }}>
           <div style={{ ...gs.card, width:'100%', maxWidth:320, padding:24 }}>
@@ -2564,25 +2628,32 @@ function TripDetailScreen({ user, trip, onBack }) {
   // ── 共用 Header ──
   const TripHeader = () => (
     <div style={{ padding:'52px 20px 14px', backgroundColor:color+'12', borderBottom:`1px solid ${color}33`, flexShrink:0 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ width:40, height:40, borderRadius:12, backgroundColor:color+'22', border:`1.5px solid ${color}55`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>{trip.emoji||'✈️'}</div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:16, fontWeight:800 }}>{trip.name}</div>
-          {trip.destination && <div style={{ fontSize:11, color:C.textMuted }}>📍 {trip.destination}</div>}
-        </div>
-        {/* 我的頭貼 */}
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        {/* 左：頭貼 + 名字 */}
         <button onClick={()=>{ setProfileName(user.displayName||''); setProfileEmoji(user.photoURL||''); setProfileModal(true); }}
-          style={{ width:38, height:38, borderRadius:'50%', backgroundColor:color+'18', border:`1.5px solid ${color}55`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, padding:0, overflow:'hidden' }}>
-          {user.photoURL && user.photoURL.startsWith('data:') ? (
-            <img src={user.photoURL} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-          ) : (
-            <span style={{ fontSize:user.photoURL?20:15, fontWeight:700, color }}>{user.photoURL || (user.displayName||'?')[0].toUpperCase()}</span>
-          )}
+          style={{ display:'flex', alignItems:'center', gap:7, background:'none', border:'none', cursor:'pointer', padding:0, flexShrink:0 }}>
+          <div style={{ width:34, height:34, borderRadius:'50%', backgroundColor:color+'18', border:`1.5px solid ${color}55`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+            {user.photoURL && user.photoURL.startsWith('data:') ? (
+              <img src={user.photoURL} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+            ) : (
+              <span style={{ fontSize:user.photoURL?16:13, fontWeight:700, color }}>{user.photoURL || (user.displayName||'?')[0].toUpperCase()}</span>
+            )}
+          </div>
+          <div style={{ fontSize:12, fontWeight:700, color:C.textMuted, maxWidth:60, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user.displayName||'我'}</div>
         </button>
+        {/* 中：旅程名稱 */}
+        <div style={{ flex:1, textAlign:'center' }}>
+          <div style={{ fontSize:15, fontWeight:800 }}>{trip.emoji||'✈️'} {trip.name}</div>
+          {trip.destination && <div style={{ fontSize:10, color:C.textMuted }}>📍 {trip.destination}</div>}
+        </div>
+        {/* 右：離開 */}
         <button onClick={onBack}
           style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'6px 12px', color:C.textMuted, fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}>
           離開
         </button>
+      </div>
+    </div>
+  );
       </div>
     </div>
   );
