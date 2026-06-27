@@ -2563,9 +2563,6 @@ function TripDetailScreen({ user, trip, onBack }) {
       </div>
     </div>
   );
-      </div>
-    </div>
-  );
 
   // ── 底部 Tab Bar ──
   const TabBar = () => {
